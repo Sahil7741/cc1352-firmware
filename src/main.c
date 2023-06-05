@@ -76,6 +76,6 @@ void main(void) {
   uart_irq_rx_enable(uart_dev);
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
-    print_uart("Hello\r\n");
+    LOG_DBG("HelloFromInf");
   }
 }
