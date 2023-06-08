@@ -23,7 +23,7 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 static const bool temp = true;
 
-static const char *query = "zephyr.local";
+static const char *query = "_zephyr._tcp";
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(bool), 10, 4);
 
@@ -158,8 +158,8 @@ void main(void) {
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
     LOG_DBG("HelloFromInf");
-    net_config_init_app(NULL, "CC1352 Firmware");
-    do_mdns_ipv4_lookup();
-    // do_mdns_ipv6_lookup();
+    // net_config_init_app(NULL, "CC1352 Firmware");
+    // do_mdns_ipv4_lookup();
+    do_mdns_ipv6_lookup();
   }
 }
