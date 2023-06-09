@@ -11,6 +11,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/dns_resolve.h>
 #include <zephyr/net/net_config.h>
+#include <zephyr/net/net_if.h>
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -158,8 +159,35 @@ void main(void) {
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
     LOG_DBG("HelloFromInf");
+    int ret;
     // net_config_init_app(NULL, "CC1352 Firmware");
-    do_mdns_ipv4_lookup();
+    // do_mdns_ipv4_lookup();
+    // do_mdns_ipv6_lookup();
+    struct net_if *iface = net_if_get_ieee802154();
+    if (!iface) {
+      LOG_ERR("Null Iface");
+      return;
+    }
+
+    if (!net_if_is_up(iface)) {
+      ret = net_if_up(iface);
+      if (ret != 0) {
+        LOG_ERR("Error in bringing up iface: %d", ret);
+        return;
+      }
+    } else {
+      LOG_INF("Iface is already Up");
+    }
+
+    net_if_set_default(iface);
+    LOG_INF("Set default iface");
+
+    ret = net_config_init_app(NULL, "cc1352_greybus");
+    if (ret != 0) {
+      LOG_ERR("Failed to init netoworking: %d", ret);
+      return;
+    }
+
     do_mdns_ipv6_lookup();
   }
 }
