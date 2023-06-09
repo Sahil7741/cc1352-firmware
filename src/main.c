@@ -21,6 +21,8 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 #define DNS_TIMEOUT (10 * MSEC_PER_SEC)
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+static const struct device *const ieee802154_dev =
+    DEVICE_DT_GET(DT_CHOSEN(zephyr_ieee802154));
 
 static const bool temp = true;
 
@@ -163,26 +165,14 @@ void main(void) {
     // net_config_init_app(NULL, "CC1352 Firmware");
     // do_mdns_ipv4_lookup();
     // do_mdns_ipv6_lookup();
-    struct net_if *iface = net_if_get_ieee802154();
-    if (!iface) {
-      LOG_ERR("Null Iface");
+
+    if (!device_is_ready(ieee802154_dev)) {
+      LOG_ERR("IEEE802.15.4 device not ready");
       return;
     }
+    LOG_INF("IEEE802.15.4 device is ready");
 
-    if (!net_if_is_up(iface)) {
-      ret = net_if_up(iface);
-      if (ret != 0) {
-        LOG_ERR("Error in bringing up iface: %d", ret);
-        return;
-      }
-    } else {
-      LOG_INF("Iface is already Up");
-    }
-
-    net_if_set_default(iface);
-    LOG_INF("Set default iface");
-
-    ret = net_config_init_app(NULL, "cc1352_greybus");
+    ret = net_config_init_app(ieee802154_dev, "cc1352_greybus");
     if (ret != 0) {
       LOG_ERR("Failed to init netoworking: %d", ret);
       return;
