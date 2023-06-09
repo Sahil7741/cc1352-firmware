@@ -17,7 +17,7 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 
 #define MSG_SIZE 32
-#define DNS_TIMEOUT (2 * MSEC_PER_SEC)
+#define DNS_TIMEOUT (10 * MSEC_PER_SEC)
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
@@ -120,7 +120,7 @@ static void do_mdns_ipv4_lookup() {
 static void do_mdns_ipv6_lookup() {
   int ret;
 
-  LOG_DBG("Doing mDNS IPv6 query");
+  LOG_DBG("Doing mDNS v6 query for %s", query);
 
   ret = dns_get_addr_info(query, DNS_QUERY_TYPE_AAAA, NULL, mdns_result_cb,
                           (void *)query, DNS_TIMEOUT);
@@ -159,7 +159,7 @@ void main(void) {
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
     LOG_DBG("HelloFromInf");
     // net_config_init_app(NULL, "CC1352 Firmware");
-    // do_mdns_ipv4_lookup();
+    do_mdns_ipv4_lookup();
     do_mdns_ipv6_lookup();
   }
 }
