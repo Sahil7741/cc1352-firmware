@@ -23,6 +23,7 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 static const struct device *const ieee802154_dev =
     DEVICE_DT_GET(DT_CHOSEN(zephyr_ieee802154));
+static struct ieee802154_radio_api *radio_api;
 
 static const bool temp = true;
 
@@ -137,6 +138,7 @@ static void do_mdns_ipv6_lookup() {
 
 void main(void) {
   LOG_INF("Starting BeaglePlay Greybus");
+  int ret;
 
   bool tx;
 
@@ -145,7 +147,23 @@ void main(void) {
     return;
   }
 
-  int ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
+  if (!device_is_ready(ieee802154_dev)) {
+    LOG_ERR("IEEE802.15.4 device not ready");
+    return;
+  }
+  LOG_INF("IEEE802.15.4 device is ready");
+
+  ret = net_config_init_app(ieee802154_dev, "cc1352_greybus");
+  if (ret != 0) {
+    LOG_ERR("Failed to init netoworking: %d", ret);
+    return;
+  }
+
+  radio_api = (struct ieee802154_radio_api *)ieee802154_dev->api;
+
+  dns_init_resolver();
+
+  ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
   if (ret < 0) {
     if (ret == -ENOTSUP) {
       LOG_ERR("Interrupt-driven UART API support not enabled\n");
@@ -161,23 +179,7 @@ void main(void) {
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
     LOG_DBG("HelloFromInf");
-    int ret;
-    // net_config_init_app(NULL, "CC1352 Firmware");
-    // do_mdns_ipv4_lookup();
-    // do_mdns_ipv6_lookup();
-
-    if (!device_is_ready(ieee802154_dev)) {
-      LOG_ERR("IEEE802.15.4 device not ready");
-      return;
-    }
-    LOG_INF("IEEE802.15.4 device is ready");
-
-    ret = net_config_init_app(ieee802154_dev, "cc1352_greybus");
-    if (ret != 0) {
-      LOG_ERR("Failed to init netoworking: %d", ret);
-      return;
-    }
-
+    do_mdns_ipv4_lookup();
     do_mdns_ipv6_lookup();
   }
 }
