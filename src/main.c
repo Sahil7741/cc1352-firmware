@@ -25,15 +25,12 @@ static const struct device *const ieee802154_dev =
     DEVICE_DT_GET(DT_CHOSEN(zephyr_ieee802154));
 static struct ieee802154_radio_api *radio_api;
 
-static const bool temp = true;
-
 static const char *query = "_zephyr._tcp";
 
-K_MSGQ_DEFINE(uart_msgq, sizeof(bool), 10, 4);
+K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 
 void serial_callback(const struct device *dev, void *user_data) {
-  uint8_t c;
-  bool flag = false;
+  char c;
 
   if (!uart_irq_update(uart_dev)) {
     return;
@@ -44,11 +41,11 @@ void serial_callback(const struct device *dev, void *user_data) {
   }
 
   while (uart_fifo_read(uart_dev, &c, 1) == 1) {
-    flag = true;
-  }
-
-  if (flag) {
-    k_msgq_put(&uart_msgq, &temp, K_NO_WAIT);
+    if (c == '1' || c == '2') {
+      k_msgq_put(&uart_msgq, &c, K_NO_WAIT);
+    } else {
+      LOG_DBG("Invalid Input: %u", c);
+    }
   }
 }
 
@@ -140,7 +137,7 @@ void main(void) {
   LOG_INF("Starting BeaglePlay Greybus");
   int ret;
 
-  bool tx;
+  char tx;
 
   if (!device_is_ready(uart_dev)) {
     LOG_ERR("UART device not found!");
@@ -178,8 +175,13 @@ void main(void) {
   uart_irq_rx_enable(uart_dev);
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
-    LOG_DBG("HelloFromInf");
-    do_mdns_ipv4_lookup();
-    do_mdns_ipv6_lookup();
+    switch (tx) {
+    case '1':
+      do_mdns_ipv4_lookup();
+      break;
+    case '2':
+      do_mdns_ipv6_lookup();
+      break;
+    }
   }
 }
