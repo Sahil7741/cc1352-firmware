@@ -14,27 +14,81 @@
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
-#define MAX_NODES 1
 #define NODE_DISCOVERY_INTERVAL 5000
+#define MAX_GREYBUS_NODES 1
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 
+static struct sockaddr greybus_nodes[MAX_GREYBUS_NODES];
+static size_t greybus_nodes_pos = 0;
+K_MUTEX_DEFINE(greybus_nodes_mutex);
+
+// Add node to the active nodes
+static bool add_node(const struct sockaddr *node_addr) {
+  if (greybus_nodes_pos >= MAX_GREYBUS_NODES) {
+    LOG_WRN("Reached max greybus nodes limit");
+    return false;
+  }
+
+  memcpy(&greybus_nodes[greybus_nodes_pos], node_addr, sizeof(struct sockaddr));
+  greybus_nodes_pos++;
+  return true;
+}
+
+static int find_node(const struct sockaddr *node_addr) {
+  for(size_t i = 0; i < greybus_nodes_pos; ++i) {
+      if (greybus_nodes[i].sa_family == node_addr->sa_family && memcmp(node_addr->data, greybus_nodes[i].data, NET_SOCKADDR_MAX_SIZE - sizeof(sa_family_t)) == 0) {
+        return i;
+      }
+  }
+  return -1;
+}
+
+// Check if node is active
+static bool is_node_active(const struct sockaddr *node_addr) {
+  return find_node(node_addr) != -1;
+}
+
+// Remove deactive nodes
+static bool remove_node(const struct sockaddr *node_addr) {
+  int pos = find_node(node_addr);
+  if (pos == -1) {
+    return false;
+  }
+  memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos], sizeof(struct sockaddr));
+  greybus_nodes_pos--;
+  return true;
+}
+
 void node_discovery_entry(void *p1, void *p2, void *p3) {
   // Peform node discovery in infinte loop
-  struct in6_addr nodes_table[MAX_NODES];
   int ret;
+  struct sockaddr addr;
   static const char *node_addr = "2001:db8::1\0";
 
   while(1) {
     // Search for all `_greybus._tcp` devices on the network. Currently just using a static address.
-    static struct sockaddr addr;
     ret = net_ipaddr_parse(node_addr, strlen(node_addr), &addr);
     if (!ret) {
       LOG_WRN("Failed to parse address: %s", node_addr);
     }
     LOG_INF("Discoverd node: %s", node_addr);
+
+    k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+
+    if (!is_node_active(&addr)) {
+      if (!add_node(&addr)) {
+        LOG_WRN("Failed to add node");
+      } else {
+        LOG_INF("Added Greybus Node");
+      }
+    }
+
+    k_mutex_unlock(&greybus_nodes_mutex);
+
+    LOG_DBG("Going to sleep");
 
     // Crete a new thread for handling the node.
 
@@ -44,7 +98,7 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
 }
 
 // Thread responseible for beagleconnect node discovery.
-K_THREAD_DEFINE(node_discovery, 512, node_discovery_entry, NULL, NULL, NULL, 5, 0, 0);
+K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5, 0, 0);
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
@@ -100,6 +154,16 @@ void main(void) {
   uart_irq_rx_enable(uart_dev);
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
+    switch (tx) {
+      case '1':
+        {
+          k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+          greybus_nodes_pos = 0;
+          k_mutex_unlock(&greybus_nodes_mutex);
+          LOG_ERR("Reset Greybus Nodes");
+          break;
+        }
+    }
     LOG_DBG("Pressed: %c", tx);
   }
 }
