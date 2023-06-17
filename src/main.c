@@ -15,7 +15,7 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
-#define MAX_GREYBUS_NODES 1
+#define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
@@ -53,12 +53,17 @@ static bool is_node_active(const struct sockaddr *node_addr) {
 
 // Remove deactive nodes
 static bool remove_node(const struct sockaddr *node_addr) {
+  if (greybus_nodes_pos <= 0) {
+    return false;
+  }
+
   int pos = find_node(node_addr);
   if (pos == -1) {
     return false;
   }
-  memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos], sizeof(struct sockaddr));
+
   greybus_nodes_pos--;
+  memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos], sizeof(struct sockaddr));
   return true;
 }
 
