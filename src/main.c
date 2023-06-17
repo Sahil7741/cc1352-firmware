@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/net/net_ip.h>
 #include <stdbool.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/net/net_ip.h>
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -38,10 +38,12 @@ static bool add_node(const struct sockaddr *node_addr) {
 }
 
 static int find_node(const struct sockaddr *node_addr) {
-  for(size_t i = 0; i < greybus_nodes_pos; ++i) {
-      if (greybus_nodes[i].sa_family == node_addr->sa_family && memcmp(node_addr->data, greybus_nodes[i].data, NET_SOCKADDR_MAX_SIZE - sizeof(sa_family_t)) == 0) {
-        return i;
-      }
+  for (size_t i = 0; i < greybus_nodes_pos; ++i) {
+    if (greybus_nodes[i].sa_family == node_addr->sa_family &&
+        memcmp(node_addr->data, greybus_nodes[i].data,
+               NET_SOCKADDR_MAX_SIZE - sizeof(sa_family_t)) == 0) {
+      return i;
+    }
   }
   return -1;
 }
@@ -63,7 +65,8 @@ static bool remove_node(const struct sockaddr *node_addr) {
   }
 
   greybus_nodes_pos--;
-  memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos], sizeof(struct sockaddr));
+  memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos],
+         sizeof(struct sockaddr));
   return true;
 }
 
@@ -73,8 +76,9 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
   struct sockaddr addr;
   static const char *node_addr = "2001:db8::1\0";
 
-  while(1) {
-    // Search for all `_greybus._tcp` devices on the network. Currently just using a static address.
+  while (1) {
+    // Search for all `_greybus._tcp` devices on the network. Currently just
+    // using a static address.
     ret = net_ipaddr_parse(node_addr, strlen(node_addr), &addr);
     if (!ret) {
       LOG_WRN("Failed to parse address: %s", node_addr);
@@ -103,7 +107,8 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
 }
 
 // Thread responseible for beagleconnect node discovery.
-K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5, 0, 0);
+K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
+                0, 0);
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
@@ -160,14 +165,13 @@ void main(void) {
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
     switch (tx) {
-      case '1':
-        {
-          k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-          greybus_nodes_pos = 0;
-          k_mutex_unlock(&greybus_nodes_mutex);
-          LOG_ERR("Reset Greybus Nodes");
-          break;
-        }
+    case '1': {
+      k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+      greybus_nodes_pos = 0;
+      k_mutex_unlock(&greybus_nodes_mutex);
+      LOG_ERR("Reset Greybus Nodes");
+      break;
+    }
     }
     LOG_DBG("Pressed: %c", tx);
   }
