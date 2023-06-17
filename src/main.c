@@ -70,38 +70,54 @@ static bool remove_node(const struct sockaddr *node_addr) {
   return true;
 }
 
+// This function probes for all greybus nodes.
+// Currently just using static IP for nodes.
+//
+// @return number of discovered nodes
+int get_all_nodes(struct sockaddr *node_array, const size_t node_array_len) {
+  if (node_array_len < 1) {
+    return -1;
+  }
+
+  static const char *node_addr = "2001:db8::1\0";
+
+  int ret = net_ipaddr_parse(node_addr, strlen(node_addr), &node_array[0]);
+  if (!ret) {
+    LOG_WRN("Failed to parse address: %s", node_addr);
+  }
+
+  return 1;
+}
+
 void node_discovery_entry(void *p1, void *p2, void *p3) {
   // Peform node discovery in infinte loop
   int ret;
-  struct sockaddr addr;
-  static const char *node_addr = "2001:db8::1\0";
+  struct sockaddr node_array[MAX_GREYBUS_NODES];
 
   while (1) {
-    // Search for all `_greybus._tcp` devices on the network. Currently just
-    // using a static address.
-    ret = net_ipaddr_parse(node_addr, strlen(node_addr), &addr);
-    if (!ret) {
-      LOG_WRN("Failed to parse address: %s", node_addr);
+    ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
+    if (ret < 0) {
+      LOG_WRN("Failed to get greybus nodes");
+      continue;
     }
-    LOG_INF("Discoverd node: %s", node_addr);
+    LOG_INF("Discoverd %u nodes", ret);
 
-    k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-
-    if (!is_node_active(&addr)) {
-      if (!add_node(&addr)) {
-        LOG_WRN("Failed to add node");
-      } else {
-        LOG_INF("Added Greybus Node");
+    for (size_t i = 0; i < ret; ++i) {
+      k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+      if (!is_node_active(&node_array[i])) {
+        if (!add_node(&node_array[i])) {
+          LOG_WRN("Failed to add node");
+        } else {
+          LOG_INF("Added Greybus Node");
+        }
       }
+      k_mutex_unlock(&greybus_nodes_mutex);
     }
-
-    k_mutex_unlock(&greybus_nodes_mutex);
-
-    LOG_DBG("Going to sleep");
 
     // Crete a new thread for handling the node.
 
     // Put the thread to sleep for an interval
+    LOG_DBG("Going to sleep");
     k_msleep(NODE_DISCOVERY_INTERVAL);
   }
 }
