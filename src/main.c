@@ -9,39 +9,74 @@
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/net/net_config.h>
+#include <zephyr/net/net_if.h>
 #include <zephyr/net/net_ip.h>
+#include <zephyr/net/socket.h>
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define GB_TRANSPORT_TCPIP_BASE_PORT 4242
+
+static const struct device *const ieee802154_dev =
+    DEVICE_DT_GET(DT_CHOSEN(zephyr_ieee802154));
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
+K_MSGQ_DEFINE(node_discovery_msgq, sizeof(struct sockaddr_in6), 10, 4);
 
-static struct sockaddr greybus_nodes[MAX_GREYBUS_NODES];
+static struct sockaddr_in6 greybus_nodes[MAX_GREYBUS_NODES];
 static size_t greybus_nodes_pos = 0;
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 
+void node_discovery_entry(void *, void *, void *);
+void node_handler_entry(void *, void *, void *);
+
+// Thread responseible for beagleconnect node discovery.
+K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
+                0, 0);
+
+K_THREAD_DEFINE(node_handler, 2048, node_handler_entry, NULL, NULL, NULL, 5, 0,
+                0);
+
 // Add node to the active nodes
-static bool add_node(const struct sockaddr *node_addr) {
+static bool add_node(const struct sockaddr_in6 *node_addr) {
   if (greybus_nodes_pos >= MAX_GREYBUS_NODES) {
     LOG_WRN("Reached max greybus nodes limit");
     return false;
   }
 
-  memcpy(&greybus_nodes[greybus_nodes_pos], node_addr, sizeof(struct sockaddr));
+  memcpy(&greybus_nodes[greybus_nodes_pos], node_addr,
+         sizeof(struct sockaddr_in6));
   greybus_nodes_pos++;
   return true;
 }
 
-static int find_node(const struct sockaddr *node_addr) {
+static int sock_addr_cmp_addr(const struct sockaddr *sa,
+                              const struct sockaddr *sb) {
+  if (sa->sa_family != sb->sa_family)
+    return (sa->sa_family - sb->sa_family);
+
+  if (sa->sa_family == AF_INET) {
+    return (memcmp(&((struct sockaddr_in *)sa)->sin_addr,
+                   &((struct sockaddr_in *)sb)->sin_addr,
+                   sizeof(struct in_addr)));
+  } else if (sa->sa_family == AF_INET6) {
+    return (memcmp(&((struct sockaddr_in6 *)sa)->sin6_addr,
+                   &((struct sockaddr_in6 *)sb)->sin6_addr,
+                   sizeof(struct in6_addr)));
+  }
+  return -1;
+}
+
+static int find_node(const struct sockaddr_in6 *node_addr) {
   for (size_t i = 0; i < greybus_nodes_pos; ++i) {
-    if (greybus_nodes[i].sa_family == node_addr->sa_family &&
-        memcmp(node_addr->data, greybus_nodes[i].data,
-               NET_SOCKADDR_MAX_SIZE - sizeof(sa_family_t)) == 0) {
+    if (sock_addr_cmp_addr((struct sockaddr *)node_addr,
+                           (struct sockaddr *)&greybus_nodes[i]) == 0) {
       return i;
     }
   }
@@ -49,12 +84,12 @@ static int find_node(const struct sockaddr *node_addr) {
 }
 
 // Check if node is active
-static bool is_node_active(const struct sockaddr *node_addr) {
+static bool is_node_active(const struct sockaddr_in6 *node_addr) {
   return find_node(node_addr) != -1;
 }
 
 // Remove deactive nodes
-static bool remove_node(const struct sockaddr *node_addr) {
+static bool remove_node(const struct sockaddr_in6 *node_addr) {
   if (greybus_nodes_pos <= 0) {
     return false;
   }
@@ -66,25 +101,47 @@ static bool remove_node(const struct sockaddr *node_addr) {
 
   greybus_nodes_pos--;
   memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos],
-         sizeof(struct sockaddr));
+         sizeof(struct sockaddr_in6));
   return true;
+}
+
+void print_sockaddr(const struct sockaddr *addr) {
+  if (addr->sa_family == AF_INET) {
+    const struct sockaddr_in *a = (struct sockaddr_in *)addr;
+    LOG_DBG("IPV4 addr: Port %u, Address %d.%d.%d.%d", a->sin_port,
+            a->sin_addr.s4_addr[0], a->sin_addr.s4_addr[1],
+            a->sin_addr.s4_addr[2], a->sin_addr.s4_addr[3]);
+  } else if (addr->sa_family == AF_INET6) {
+    const struct sockaddr_in6 *a = (struct sockaddr_in6 *)addr;
+    LOG_DBG("IPV6 addr: Port %u, Address "
+            "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%"
+            "02x%02x",
+            a->sin6_port, a->sin6_addr.s6_addr[0], a->sin6_addr.s6_addr[1],
+            a->sin6_addr.s6_addr[2], a->sin6_addr.s6_addr[3],
+            a->sin6_addr.s6_addr[4], a->sin6_addr.s6_addr[5],
+            a->sin6_addr.s6_addr[6], a->sin6_addr.s6_addr[7],
+            a->sin6_addr.s6_addr[8], a->sin6_addr.s6_addr[9],
+            a->sin6_addr.s6_addr[10], a->sin6_addr.s6_addr[11],
+            a->sin6_addr.s6_addr[12], a->sin6_addr.s6_addr[13],
+            a->sin6_addr.s6_addr[14], a->sin6_addr.s6_addr[15]);
+  }
 }
 
 // This function probes for all greybus nodes.
 // Currently just using static IP for nodes.
 //
 // @return number of discovered nodes
-int get_all_nodes(struct sockaddr *node_array, const size_t node_array_len) {
+int get_all_nodes(struct sockaddr_in6 *node_array,
+                  const size_t node_array_len) {
   if (node_array_len < 1) {
     return -1;
   }
 
-  static const char *node_addr = "2001:db8::1\0";
-
-  int ret = net_ipaddr_parse(node_addr, strlen(node_addr), &node_array[0]);
-  if (!ret) {
-    LOG_WRN("Failed to parse address: %s", node_addr);
-  }
+  memset(&node_array[0], 0, sizeof(struct sockaddr_in6));
+  node_array[0].sin6_family = AF_INET6;
+  node_array[0].sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
+  inet_pton(AF_INET6, CONFIG_NET_CONFIG_PEER_IPV6_ADDR,
+            &node_array[0].sin6_addr);
 
   return 1;
 }
@@ -92,7 +149,7 @@ int get_all_nodes(struct sockaddr *node_array, const size_t node_array_len) {
 void node_discovery_entry(void *p1, void *p2, void *p3) {
   // Peform node discovery in infinte loop
   int ret;
-  struct sockaddr node_array[MAX_GREYBUS_NODES];
+  struct sockaddr_in6 node_array[MAX_GREYBUS_NODES];
 
   while (1) {
     ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
@@ -105,10 +162,12 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
     for (size_t i = 0; i < ret; ++i) {
       k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
       if (!is_node_active(&node_array[i])) {
+        // print_sockaddr((struct sockaddr *)&node_array[i]);
         if (!add_node(&node_array[i])) {
           LOG_WRN("Failed to add node");
         } else {
           LOG_INF("Added Greybus Node");
+          k_msgq_put(&node_discovery_msgq, &node_array[i], K_FOREVER);
         }
       }
       k_mutex_unlock(&greybus_nodes_mutex);
@@ -122,9 +181,83 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
   }
 }
 
-// Thread responseible for beagleconnect node discovery.
-K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
-                0, 0);
+int connect_to_node(const struct sockaddr *addr) {
+  int ret, sock;
+  size_t addr_size;
+
+  if (addr->sa_family == AF_INET6) {
+    sock = zsock_socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    addr_size = sizeof(struct sockaddr_in6);
+  } else {
+    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    addr_size = sizeof(struct sockaddr_in);
+  }
+
+  if (sock < 0) {
+    LOG_WRN("Failed to create socket %d", errno);
+    return -1;
+  }
+
+  LOG_INF("Trying to connect to node from socket %d", sock);
+  print_sockaddr(addr);
+
+  ret = zsock_connect(sock, addr, addr_size);
+
+  if (ret) {
+    LOG_WRN("Failed to connect to node %d", errno);
+    zsock_close(sock);
+    return -1;
+  }
+
+  LOG_INF("Connected to Greybus Node");
+  return sock;
+}
+
+void node_handler_entry(void *p1, void *p2, void *p3) {
+  int ret;
+  struct sockaddr_in6 addr;
+  struct zsock_pollfd fds[MAX_GREYBUS_NODES];
+  size_t fds_len = 0;
+  size_t i;
+
+  while (1) {
+    // Check messageque for new nodes
+    ret = k_msgq_get(&node_discovery_msgq, &addr, K_MSEC(500));
+    if (ret == 0) {
+      ret = connect_to_node((struct sockaddr *)&addr);
+      if (ret > 0) {
+        fds[fds_len].fd = ret;
+        fds[fds_len].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
+        fds_len++;
+      } else {
+        k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+        remove_node(&addr);
+        k_mutex_unlock(&greybus_nodes_mutex);
+      }
+    }
+
+    // Reset events for all sockets
+    for (i = 0; i < fds_len; ++i) {
+      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
+    }
+
+    // Poll all active nodes
+    LOG_DBG("Poll Sockets %u", fds_len);
+    ret = zsock_poll(fds, fds_len, 500);
+    if (ret > 0) {
+      for (size_t i = 0; i < fds_len; ++i) {
+        if (fds[i].revents & ZSOCK_POLLIN) {
+          LOG_DBG("Some data is available to be read");
+        }
+        if (fds[i].revents & ZSOCK_POLLOUT) {
+          LOG_DBG("Data can be written");
+        }
+      }
+    }
+
+    // Handle all active nodes
+  }
+}
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
