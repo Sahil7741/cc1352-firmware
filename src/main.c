@@ -27,9 +27,9 @@ static const struct device *const ieee802154_dev =
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
-K_MSGQ_DEFINE(node_discovery_msgq, sizeof(struct sockaddr_in6), 10, 4);
+K_MSGQ_DEFINE(node_discovery_msgq, sizeof(struct in6_addr), 10, 4);
 
-static struct sockaddr_in6 greybus_nodes[MAX_GREYBUS_NODES];
+static struct in6_addr greybus_nodes[MAX_GREYBUS_NODES];
 static size_t greybus_nodes_pos = 0;
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 
@@ -44,39 +44,25 @@ K_THREAD_DEFINE(node_handler, 2048, node_handler_entry, NULL, NULL, NULL, 5, 0,
                 0);
 
 // Add node to the active nodes
-static bool add_node(const struct sockaddr_in6 *node_addr) {
+static bool add_node(const struct in6_addr *node_addr) {
   if (greybus_nodes_pos >= MAX_GREYBUS_NODES) {
     LOG_WRN("Reached max greybus nodes limit");
     return false;
   }
 
-  memcpy(&greybus_nodes[greybus_nodes_pos], node_addr,
-         sizeof(struct sockaddr_in6));
+  memcpy(&greybus_nodes[greybus_nodes_pos], node_addr, sizeof(struct in6_addr));
   greybus_nodes_pos++;
   return true;
 }
 
-static int sock_addr_cmp_addr(const struct sockaddr *sa,
-                              const struct sockaddr *sb) {
-  if (sa->sa_family != sb->sa_family)
-    return (sa->sa_family - sb->sa_family);
-
-  if (sa->sa_family == AF_INET) {
-    return (memcmp(&((struct sockaddr_in *)sa)->sin_addr,
-                   &((struct sockaddr_in *)sb)->sin_addr,
-                   sizeof(struct in_addr)));
-  } else if (sa->sa_family == AF_INET6) {
-    return (memcmp(&((struct sockaddr_in6 *)sa)->sin6_addr,
-                   &((struct sockaddr_in6 *)sb)->sin6_addr,
-                   sizeof(struct in6_addr)));
-  }
-  return -1;
+static int sock_addr_cmp_addr(const struct in6_addr *sa,
+                              const struct in6_addr *sb) {
+  return memcmp(sa, sb, sizeof(struct in6_addr));
 }
 
-static int find_node(const struct sockaddr_in6 *node_addr) {
+static int find_node(const struct in6_addr *node_addr) {
   for (size_t i = 0; i < greybus_nodes_pos; ++i) {
-    if (sock_addr_cmp_addr((struct sockaddr *)node_addr,
-                           (struct sockaddr *)&greybus_nodes[i]) == 0) {
+    if (sock_addr_cmp_addr(node_addr, &greybus_nodes[i]) == 0) {
       return i;
     }
   }
@@ -84,12 +70,12 @@ static int find_node(const struct sockaddr_in6 *node_addr) {
 }
 
 // Check if node is active
-static bool is_node_active(const struct sockaddr_in6 *node_addr) {
+static bool is_node_active(const struct in6_addr *node_addr) {
   return find_node(node_addr) != -1;
 }
 
 // Remove deactive nodes
-static bool remove_node(const struct sockaddr_in6 *node_addr) {
+static bool remove_node(const struct in6_addr *node_addr) {
   if (greybus_nodes_pos <= 0) {
     return false;
   }
@@ -101,7 +87,7 @@ static bool remove_node(const struct sockaddr_in6 *node_addr) {
 
   greybus_nodes_pos--;
   memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos],
-         sizeof(struct sockaddr_in6));
+         sizeof(struct in6_addr));
   return true;
 }
 
@@ -131,17 +117,13 @@ void print_sockaddr(const struct sockaddr *addr) {
 // Currently just using static IP for nodes.
 //
 // @return number of discovered nodes
-int get_all_nodes(struct sockaddr_in6 *node_array,
-                  const size_t node_array_len) {
+int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   if (node_array_len < 1) {
     return -1;
   }
 
-  memset(&node_array[0], 0, sizeof(struct sockaddr_in6));
-  node_array[0].sin6_family = AF_INET6;
-  node_array[0].sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
-  inet_pton(AF_INET6, CONFIG_NET_CONFIG_PEER_IPV6_ADDR,
-            &node_array[0].sin6_addr);
+  memset(&node_array[0], 0, sizeof(struct in6_addr));
+  inet_pton(AF_INET6, CONFIG_NET_CONFIG_PEER_IPV6_ADDR, &node_array[0]);
 
   return 1;
 }
@@ -149,7 +131,7 @@ int get_all_nodes(struct sockaddr_in6 *node_array,
 void node_discovery_entry(void *p1, void *p2, void *p3) {
   // Peform node discovery in infinte loop
   int ret;
-  struct sockaddr_in6 node_array[MAX_GREYBUS_NODES];
+  struct in6_addr node_array[MAX_GREYBUS_NODES];
 
   while (1) {
     ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
@@ -162,7 +144,6 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
     for (size_t i = 0; i < ret; ++i) {
       k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
       if (!is_node_active(&node_array[i])) {
-        // print_sockaddr((struct sockaddr *)&node_array[i]);
         if (!add_node(&node_array[i])) {
           LOG_WRN("Failed to add node");
         } else {
@@ -220,9 +201,13 @@ void node_handler_entry(void *p1, void *p2, void *p3) {
   size_t fds_len = 0;
   size_t i;
 
+  addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
+  addr.sin6_family = AF_INET6;
+  addr.sin6_scope_id = 0;
+
   while (1) {
     // Check messageque for new nodes
-    ret = k_msgq_get(&node_discovery_msgq, &addr, K_MSEC(500));
+    ret = k_msgq_get(&node_discovery_msgq, &addr.sin6_addr, K_MSEC(500));
     if (ret == 0) {
       ret = connect_to_node((struct sockaddr *)&addr);
       if (ret > 0) {
@@ -231,7 +216,7 @@ void node_handler_entry(void *p1, void *p2, void *p3) {
         fds_len++;
       } else {
         k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-        remove_node(&addr);
+        remove_node(&addr.sin6_addr);
         k_mutex_unlock(&greybus_nodes_mutex);
       }
     }
