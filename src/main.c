@@ -21,9 +21,6 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
 
-static const struct device *const ieee802154_dev =
-    DEVICE_DT_GET(DT_CHOSEN(zephyr_ieee802154));
-
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
