@@ -151,8 +151,6 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
       k_mutex_unlock(&greybus_nodes_mutex);
     }
 
-    // Crete a new thread for handling the node.
-
     // Put the thread to sleep for an interval
     LOG_DBG("Going to sleep");
     k_msleep(NODE_DISCOVERY_INTERVAL);
@@ -207,7 +205,7 @@ void node_handler_entry(void *p1, void *p2, void *p3) {
     ret = k_msgq_get(&node_discovery_msgq, &addr.sin6_addr, K_MSEC(500));
     if (ret == 0) {
       ret = connect_to_node((struct sockaddr *)&addr);
-      if (ret > 0) {
+      if (ret >= 0) {
         fds[fds_len].fd = ret;
         fds[fds_len].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
         fds_len++;
@@ -240,6 +238,7 @@ void node_handler_entry(void *p1, void *p2, void *p3) {
     // Handle all active nodes
   }
 }
+
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
