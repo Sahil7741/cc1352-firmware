@@ -37,6 +37,37 @@ void node_discovery_entry(void *, void *, void *);
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
 
+static int connect_to_node(const struct sockaddr *addr) {
+  int ret, sock;
+  size_t addr_size;
+
+  if (addr->sa_family == AF_INET6) {
+    sock = zsock_socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    addr_size = sizeof(struct sockaddr_in6);
+  } else {
+    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    addr_size = sizeof(struct sockaddr_in);
+  }
+
+  if (sock < 0) {
+    LOG_WRN("Failed to create socket %d", errno);
+    return -1;
+  }
+
+  LOG_INF("Trying to connect to node from socket %d", sock);
+
+  ret = zsock_connect(sock, addr, addr_size);
+
+  if (ret) {
+    LOG_WRN("Failed to connect to node %d", errno);
+    zsock_close(sock);
+    return -1;
+  }
+
+  LOG_INF("Connected to Greybus Node");
+  return sock;
+}
+
 // Add node to the active nodes
 static bool add_node(const struct in6_addr *node_addr) {
   if (greybus_nodes_pos >= MAX_GREYBUS_NODES) {
@@ -85,28 +116,6 @@ static bool remove_node(const struct in6_addr *node_addr) {
   return true;
 }
 
-void print_sockaddr(const struct sockaddr *addr) {
-  if (addr->sa_family == AF_INET) {
-    const struct sockaddr_in *a = (struct sockaddr_in *)addr;
-    LOG_DBG("IPV4 addr: Port %u, Address %d.%d.%d.%d", a->sin_port,
-            a->sin_addr.s4_addr[0], a->sin_addr.s4_addr[1],
-            a->sin_addr.s4_addr[2], a->sin_addr.s4_addr[3]);
-  } else if (addr->sa_family == AF_INET6) {
-    const struct sockaddr_in6 *a = (struct sockaddr_in6 *)addr;
-    LOG_DBG("IPV6 addr: Port %u, Address "
-            "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%"
-            "02x%02x",
-            a->sin6_port, a->sin6_addr.s6_addr[0], a->sin6_addr.s6_addr[1],
-            a->sin6_addr.s6_addr[2], a->sin6_addr.s6_addr[3],
-            a->sin6_addr.s6_addr[4], a->sin6_addr.s6_addr[5],
-            a->sin6_addr.s6_addr[6], a->sin6_addr.s6_addr[7],
-            a->sin6_addr.s6_addr[8], a->sin6_addr.s6_addr[9],
-            a->sin6_addr.s6_addr[10], a->sin6_addr.s6_addr[11],
-            a->sin6_addr.s6_addr[12], a->sin6_addr.s6_addr[13],
-            a->sin6_addr.s6_addr[14], a->sin6_addr.s6_addr[15]);
-  }
-}
-
 // This function probes for all greybus nodes.
 // Currently just using static IP for nodes.
 //
@@ -123,19 +132,29 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
 }
 
 static void *node_handler_entry_pthread(void *arg) {
-  struct in6_addr node_addr;
+  struct sockaddr_in6 node_addr;
+  int ret;
 
-  if(arg == NULL) {
+  if (arg == NULL) {
     LOG_WRN("NULL args");
     return NULL;
   }
 
-  LOG_INF("Non Null args");
-
-  memcpy((void*)&node_addr, arg, sizeof(struct in6_addr));
+  memcpy((void *)&node_addr.sin6_addr, arg, sizeof(struct in6_addr));
   free(arg);
 
-  while(1) {
+  node_addr.sin6_family = AF_INET6;
+  node_addr.sin6_scope_id = 0;
+
+  node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
+  ret = connect_to_node((struct sockaddr *)&node_addr);
+
+  if(ret < 0) {
+    LOG_WRN("Failed to connect to node");
+    return NULL;
+  }
+
+  while (1) {
     LOG_DBG("Hello From the Pthread");
     k_sleep(K_MSEC(2000));
   }
@@ -165,10 +184,12 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
           LOG_WRN("Failed to add node");
         } else {
           LOG_INF("Added Greybus Node");
-          
-          struct in6_addr *temp_addr = (struct in6_addr*)malloc(sizeof(struct in6_addr));
+
+          struct in6_addr *temp_addr =
+              (struct in6_addr *)malloc(sizeof(struct in6_addr));
           memcpy(temp_addr, &node_array[i], sizeof(struct in6_addr));
-          ret = pthread_create(&tid, &t_attr, node_handler_entry_pthread, (void*)temp_addr);
+          ret = pthread_create(&tid, &t_attr, node_handler_entry_pthread,
+                               (void *)temp_addr);
           if (ret != 0) {
             LOG_WRN("Failed to create Pthread");
           }
@@ -182,88 +203,6 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
     k_msleep(NODE_DISCOVERY_INTERVAL);
   }
 }
-
-int connect_to_node(const struct sockaddr *addr) {
-  int ret, sock;
-  size_t addr_size;
-
-  if (addr->sa_family == AF_INET6) {
-    sock = zsock_socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-    addr_size = sizeof(struct sockaddr_in6);
-  } else {
-    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    addr_size = sizeof(struct sockaddr_in);
-  }
-
-  if (sock < 0) {
-    LOG_WRN("Failed to create socket %d", errno);
-    return -1;
-  }
-
-  LOG_INF("Trying to connect to node from socket %d", sock);
-  print_sockaddr(addr);
-
-  ret = zsock_connect(sock, addr, addr_size);
-
-  if (ret) {
-    LOG_WRN("Failed to connect to node %d", errno);
-    zsock_close(sock);
-    return -1;
-  }
-
-  LOG_INF("Connected to Greybus Node");
-  return sock;
-}
-
-// void node_handler_entry(void *p1, void *p2, void *p3) {
-//   int ret;
-//   struct sockaddr_in6 addr;
-//   struct zsock_pollfd fds[MAX_GREYBUS_NODES * 4];
-//   size_t fds_len = 0;
-//   size_t i;
-// 
-//   addr.sin6_family = AF_INET6;
-//   addr.sin6_scope_id = 0;
-// 
-//   while (1) {
-//     // Check messageque for new nodes
-//     ret = k_msgq_get(&node_discovery_msgq, &addr.sin6_addr, K_MSEC(500));
-//     if (ret == 0) {
-//       addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
-//       ret = connect_to_node((struct sockaddr *)&addr);
-//       if (ret >= 0) {
-//         fds[fds_len].fd = ret;
-//         fds[fds_len].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
-//         fds_len++;
-//       } else {
-//         k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-//         remove_node(&addr.sin6_addr);
-//         k_mutex_unlock(&greybus_nodes_mutex);
-//       }
-//     }
-// 
-//     // Reset events for all sockets
-//     for (i = 0; i < fds_len; ++i) {
-//       fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
-//     }
-// 
-//     // Poll all active nodes
-//     LOG_DBG("Poll Sockets %u", fds_len);
-//     ret = zsock_poll(fds, fds_len, 500);
-//     if (ret > 0) {
-//       for (size_t i = 0; i < fds_len; ++i) {
-//         if (fds[i].revents & ZSOCK_POLLIN) {
-//           LOG_DBG("Some data is available to be read");
-//         }
-//         if (fds[i].revents & ZSOCK_POLLOUT) {
-//           LOG_DBG("Data can be written");
-//         }
-//       }
-//     }
-// 
-//     // Handle all active nodes
-//   }
-// }
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
