@@ -13,6 +13,7 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/posix/pthread.h>
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -20,6 +21,7 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
+#define DEFAULT_STACK_SIZE CONFIG_PTHREAD_DYNAMIC_STACK_DEFAULT_SIZE
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
@@ -37,8 +39,8 @@ void node_handler_entry(void *, void *, void *);
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
 
-K_THREAD_DEFINE(node_handler, 2048, node_handler_entry, NULL, NULL, NULL, 5, 0,
-                0);
+// K_THREAD_DEFINE(node_handler, 2048, node_handler_entry, NULL, NULL, NULL, 5, 0,
+//                 0);
 
 // Add node to the active nodes
 static bool add_node(const struct in6_addr *node_addr) {
@@ -125,10 +127,21 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   return 1;
 }
 
+static void *node_handler_entry_pthread(void *arg) {
+  while(1) {
+    LOG_DBG("Hello From the Pthread");
+    k_sleep(K_MSEC(2000));
+  }
+}
+
 void node_discovery_entry(void *p1, void *p2, void *p3) {
   // Peform node discovery in infinte loop
   int ret;
   struct in6_addr node_array[MAX_GREYBUS_NODES];
+  pthread_t tid;
+  pthread_attr_t t_attr;
+  pthread_attr_init(&t_attr);
+  t_attr.stacksize = DEFAULT_STACK_SIZE;
 
   while (1) {
     ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
@@ -145,7 +158,14 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
           LOG_WRN("Failed to add node");
         } else {
           LOG_INF("Added Greybus Node");
-          k_msgq_put(&node_discovery_msgq, &node_array[i], K_FOREVER);
+          
+          struct in6_addr *temp_addr = k_malloc(sizeof(struct in6_addr));
+          memcpy(temp_addr, &node_array[i], sizeof(struct in6_addr));
+          ret = pthread_create(&tid, &t_attr, node_handler_entry_pthread, temp_addr);
+          if (ret != 0) {
+            LOG_WRN("Failed to create Pthread");
+          }
+          // k_msgq_put(&node_discovery_msgq, &node_array[i], K_FOREVER);
         }
       }
       k_mutex_unlock(&greybus_nodes_mutex);
@@ -192,11 +212,10 @@ int connect_to_node(const struct sockaddr *addr) {
 void node_handler_entry(void *p1, void *p2, void *p3) {
   int ret;
   struct sockaddr_in6 addr;
-  struct zsock_pollfd fds[MAX_GREYBUS_NODES];
+  struct zsock_pollfd fds[MAX_GREYBUS_NODES * 4];
   size_t fds_len = 0;
   size_t i;
 
-  addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
   addr.sin6_family = AF_INET6;
   addr.sin6_scope_id = 0;
 
@@ -204,6 +223,7 @@ void node_handler_entry(void *p1, void *p2, void *p3) {
     // Check messageque for new nodes
     ret = k_msgq_get(&node_discovery_msgq, &addr.sin6_addr, K_MSEC(500));
     if (ret == 0) {
+      addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
       ret = connect_to_node((struct sockaddr *)&addr);
       if (ret >= 0) {
         fds[fds_len].fd = ret;
@@ -238,7 +258,6 @@ void node_handler_entry(void *p1, void *p2, void *p3) {
     // Handle all active nodes
   }
 }
-
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
