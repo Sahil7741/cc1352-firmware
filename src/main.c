@@ -26,21 +26,16 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
-K_MSGQ_DEFINE(node_discovery_msgq, sizeof(struct in6_addr), 10, 4);
 
 static struct in6_addr greybus_nodes[MAX_GREYBUS_NODES];
 static size_t greybus_nodes_pos = 0;
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 
 void node_discovery_entry(void *, void *, void *);
-void node_handler_entry(void *, void *, void *);
 
 // Thread responseible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
-
-// K_THREAD_DEFINE(node_handler, 2048, node_handler_entry, NULL, NULL, NULL, 5, 0,
-//                 0);
 
 // Add node to the active nodes
 static bool add_node(const struct in6_addr *node_addr) {
@@ -128,6 +123,18 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
 }
 
 static void *node_handler_entry_pthread(void *arg) {
+  struct in6_addr node_addr;
+
+  if(arg == NULL) {
+    LOG_WRN("NULL args");
+    return NULL;
+  }
+
+  LOG_INF("Non Null args");
+
+  memcpy((void*)&node_addr, arg, sizeof(struct in6_addr));
+  free(arg);
+
   while(1) {
     LOG_DBG("Hello From the Pthread");
     k_sleep(K_MSEC(2000));
@@ -159,13 +166,12 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
         } else {
           LOG_INF("Added Greybus Node");
           
-          struct in6_addr *temp_addr = k_malloc(sizeof(struct in6_addr));
+          struct in6_addr *temp_addr = (struct in6_addr*)malloc(sizeof(struct in6_addr));
           memcpy(temp_addr, &node_array[i], sizeof(struct in6_addr));
-          ret = pthread_create(&tid, &t_attr, node_handler_entry_pthread, temp_addr);
+          ret = pthread_create(&tid, &t_attr, node_handler_entry_pthread, (void*)temp_addr);
           if (ret != 0) {
             LOG_WRN("Failed to create Pthread");
           }
-          // k_msgq_put(&node_discovery_msgq, &node_array[i], K_FOREVER);
         }
       }
       k_mutex_unlock(&greybus_nodes_mutex);
@@ -209,55 +215,55 @@ int connect_to_node(const struct sockaddr *addr) {
   return sock;
 }
 
-void node_handler_entry(void *p1, void *p2, void *p3) {
-  int ret;
-  struct sockaddr_in6 addr;
-  struct zsock_pollfd fds[MAX_GREYBUS_NODES * 4];
-  size_t fds_len = 0;
-  size_t i;
-
-  addr.sin6_family = AF_INET6;
-  addr.sin6_scope_id = 0;
-
-  while (1) {
-    // Check messageque for new nodes
-    ret = k_msgq_get(&node_discovery_msgq, &addr.sin6_addr, K_MSEC(500));
-    if (ret == 0) {
-      addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
-      ret = connect_to_node((struct sockaddr *)&addr);
-      if (ret >= 0) {
-        fds[fds_len].fd = ret;
-        fds[fds_len].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
-        fds_len++;
-      } else {
-        k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-        remove_node(&addr.sin6_addr);
-        k_mutex_unlock(&greybus_nodes_mutex);
-      }
-    }
-
-    // Reset events for all sockets
-    for (i = 0; i < fds_len; ++i) {
-      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
-    }
-
-    // Poll all active nodes
-    LOG_DBG("Poll Sockets %u", fds_len);
-    ret = zsock_poll(fds, fds_len, 500);
-    if (ret > 0) {
-      for (size_t i = 0; i < fds_len; ++i) {
-        if (fds[i].revents & ZSOCK_POLLIN) {
-          LOG_DBG("Some data is available to be read");
-        }
-        if (fds[i].revents & ZSOCK_POLLOUT) {
-          LOG_DBG("Data can be written");
-        }
-      }
-    }
-
-    // Handle all active nodes
-  }
-}
+// void node_handler_entry(void *p1, void *p2, void *p3) {
+//   int ret;
+//   struct sockaddr_in6 addr;
+//   struct zsock_pollfd fds[MAX_GREYBUS_NODES * 4];
+//   size_t fds_len = 0;
+//   size_t i;
+// 
+//   addr.sin6_family = AF_INET6;
+//   addr.sin6_scope_id = 0;
+// 
+//   while (1) {
+//     // Check messageque for new nodes
+//     ret = k_msgq_get(&node_discovery_msgq, &addr.sin6_addr, K_MSEC(500));
+//     if (ret == 0) {
+//       addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
+//       ret = connect_to_node((struct sockaddr *)&addr);
+//       if (ret >= 0) {
+//         fds[fds_len].fd = ret;
+//         fds[fds_len].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
+//         fds_len++;
+//       } else {
+//         k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+//         remove_node(&addr.sin6_addr);
+//         k_mutex_unlock(&greybus_nodes_mutex);
+//       }
+//     }
+// 
+//     // Reset events for all sockets
+//     for (i = 0; i < fds_len; ++i) {
+//       fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
+//     }
+// 
+//     // Poll all active nodes
+//     LOG_DBG("Poll Sockets %u", fds_len);
+//     ret = zsock_poll(fds, fds_len, 500);
+//     if (ret > 0) {
+//       for (size_t i = 0; i < fds_len; ++i) {
+//         if (fds[i].revents & ZSOCK_POLLIN) {
+//           LOG_DBG("Some data is available to be read");
+//         }
+//         if (fds[i].revents & ZSOCK_POLLOUT) {
+//           LOG_DBG("Data can be written");
+//         }
+//       }
+//     }
+// 
+//     // Handle all active nodes
+//   }
+// }
 
 void serial_callback(const struct device *dev, void *user_data) {
   char c;
