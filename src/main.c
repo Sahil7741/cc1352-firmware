@@ -14,6 +14,7 @@
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/posix/pthread.h>
+#include "node_table.h"
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -27,8 +28,6 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 
-static struct in6_addr greybus_nodes[MAX_GREYBUS_NODES];
-static size_t greybus_nodes_pos = 0;
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 
 void node_discovery_entry(void *, void *, void *);
@@ -68,56 +67,6 @@ static int connect_to_node(const struct sockaddr *addr) {
   return sock;
 }
 
-// Add node to the active nodes
-static bool add_node(const struct in6_addr *node_addr) {
-  if (greybus_nodes_pos >= MAX_GREYBUS_NODES) {
-    LOG_WRN("Reached max greybus nodes limit");
-    return false;
-  }
-
-  memcpy(&greybus_nodes[greybus_nodes_pos], node_addr, sizeof(struct in6_addr));
-  greybus_nodes_pos++;
-  return true;
-}
-
-static int sock_addr_cmp_addr(const struct in6_addr *sa,
-                              const struct in6_addr *sb) {
-  return memcmp(sa, sb, sizeof(struct in6_addr));
-}
-
-static int find_node(const struct in6_addr *node_addr) {
-  for (size_t i = 0; i < greybus_nodes_pos; ++i) {
-    if (sock_addr_cmp_addr(node_addr, &greybus_nodes[i]) == 0) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-// Check if node is active
-static bool is_node_active(const struct in6_addr *node_addr) {
-  return find_node(node_addr) != -1;
-}
-
-// Remove deactive nodes
-static bool remove_node(const struct in6_addr *node_addr) {
-  if (greybus_nodes_pos <= 0) {
-    return false;
-  }
-
-  int pos = find_node(node_addr);
-  if (pos == -1) {
-    return false;
-  }
-
-  greybus_nodes_pos--;
-  if (pos != greybus_nodes_pos) {
-    memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos],
-           sizeof(struct in6_addr));
-  }
-  return true;
-}
-
 // This function probes for all greybus nodes.
 // Currently just using static IP for nodes.
 //
@@ -136,6 +85,8 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
 static void *node_handler_entry(void *arg) {
   struct sockaddr_in6 node_addr;
   int ret;
+  int cport_sockets[5];
+  size_t num_cports = 0;
 
   if (arg == NULL) {
     LOG_WRN("NULL args");
@@ -156,6 +107,9 @@ static void *node_handler_entry(void *arg) {
     goto cleanup;
   }
 
+  cport_sockets[num_cports] = ret;
+  num_cports++;
+
   while (1) {
     LOG_DBG("Hello From the Pthread");
     k_sleep(K_MSEC(2000));
@@ -163,7 +117,7 @@ static void *node_handler_entry(void *arg) {
 
 cleanup:
   k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-  remove_node(&node_addr.sin6_addr);
+  node_table_remove_node(&node_addr.sin6_addr);
   k_mutex_unlock(&greybus_nodes_mutex);
   return NULL;
 }
@@ -187,8 +141,8 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
 
     for (size_t i = 0; i < ret; ++i) {
       k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-      if (!is_node_active(&node_array[i])) {
-        if (!add_node(&node_array[i])) {
+      if (!node_table_is_active(&node_array[i])) {
+        if (!node_table_add_node(&node_array[i])) {
           LOG_WRN("Failed to add node");
         } else {
           LOG_INF("Added Greybus Node");
@@ -266,15 +220,6 @@ void main(void) {
   uart_irq_rx_enable(uart_dev);
 
   while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
-    switch (tx) {
-    case '1': {
-      k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-      greybus_nodes_pos = 0;
-      k_mutex_unlock(&greybus_nodes_mutex);
-      LOG_ERR("Reset Greybus Nodes");
-      break;
-    }
-    }
     LOG_DBG("Pressed: %c", tx);
   }
 }
