@@ -111,8 +111,10 @@ static bool remove_node(const struct in6_addr *node_addr) {
   }
 
   greybus_nodes_pos--;
-  memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos],
-         sizeof(struct in6_addr));
+  if (pos != greybus_nodes_pos) {
+    memcpy(&greybus_nodes[pos], &greybus_nodes[greybus_nodes_pos],
+           sizeof(struct in6_addr));
+  }
   return true;
 }
 
@@ -131,7 +133,7 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   return 1;
 }
 
-static void *node_handler_entry_pthread(void *arg) {
+static void *node_handler_entry(void *arg) {
   struct sockaddr_in6 node_addr;
   int ret;
 
@@ -149,15 +151,21 @@ static void *node_handler_entry_pthread(void *arg) {
   node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
   ret = connect_to_node((struct sockaddr *)&node_addr);
 
-  if(ret < 0) {
+  if (ret < 0) {
     LOG_WRN("Failed to connect to node");
-    return NULL;
+    goto cleanup;
   }
 
   while (1) {
     LOG_DBG("Hello From the Pthread");
     k_sleep(K_MSEC(2000));
   }
+
+cleanup:
+  k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+  remove_node(&node_addr.sin6_addr);
+  k_mutex_unlock(&greybus_nodes_mutex);
+  return NULL;
 }
 
 void node_discovery_entry(void *p1, void *p2, void *p3) {
@@ -188,7 +196,7 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
           struct in6_addr *temp_addr =
               (struct in6_addr *)malloc(sizeof(struct in6_addr));
           memcpy(temp_addr, &node_array[i], sizeof(struct in6_addr));
-          ret = pthread_create(&tid, &t_attr, node_handler_entry_pthread,
+          ret = pthread_create(&tid, &t_attr, node_handler_entry,
                                (void *)temp_addr);
           if (ret != 0) {
             LOG_WRN("Failed to create Pthread");
