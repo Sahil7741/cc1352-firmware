@@ -8,7 +8,7 @@ build:
   stage: build
   before_script:
     - rm -rf $BEAGLE_SDK
-    - west init -m https://git.beagleboard.org/beagleconnect/zephyr/zephyr --mr sdk $BEAGLE_SDK
+    - west init -m https://git.beagleboard.org/ayush1325/zephyr --mr pthread $BEAGLE_SDK
     - cd $BEAGLE_SDK
     - west update
     - west zephyr-export
