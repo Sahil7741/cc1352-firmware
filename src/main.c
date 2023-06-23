@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "greybus_protocol.h"
 #include "node_table.h"
 #include "svc.h"
 #include <stdbool.h>
@@ -83,11 +84,28 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   return 1;
 }
 
+static int read_data(int sock, void *data, size_t len) {
+  int ret;
+  int recieved = 0;
+  while (recieved < len) {
+    ret = zsock_recv(sock, recieved + (char *)data, len - recieved, 0);
+    if (ret < 0) {
+      LOG_ERR("Failed to recieve data");
+      return -1;
+    }
+    recieved += ret;
+  }
+  return recieved;
+}
+
 static void *node_handler_entry(void *arg) {
   struct sockaddr_in6 node_addr;
   int ret;
   int cport_sockets[5];
   size_t num_cports = 0;
+
+  struct gb_operation_msg_hdr hdr;
+  struct gb_svc_version_request req;
 
   if (arg == NULL) {
     LOG_WRN("NULL args");
@@ -111,12 +129,25 @@ static void *node_handler_entry(void *arg) {
   cport_sockets[num_cports] = ret;
   num_cports++;
 
-  while (1) {
-    ret = svc_send_protocol_version_request(cport_sockets[0]);
-    if (!ret) {
-      LOG_DBG("Sent svc protocol version request");
-    }
+  ret = svc_send_protocol_version_request(cport_sockets[0]);
+  if (!ret) {
+    LOG_DBG("Sent svc protocol version request");
+  }
 
+  ret = read_data(cport_sockets[0], &hdr, sizeof(struct gb_operation_msg_hdr));
+  if (ret < 0) {
+    LOG_DBG("Failed to read operation msg header");
+  } else {
+    ret = read_data(cport_sockets[0], &req,
+                    sizeof(struct gb_svc_version_request));
+    if (ret < 0) {
+      LOG_DBG("Failed to read operation msg data");
+    } else {
+      LOG_DBG("NODE SVC version: %d.%d", req.major, req.minor);
+    }
+  }
+
+  while (1) {
     k_sleep(K_MSEC(2000));
   }
 

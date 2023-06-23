@@ -6,16 +6,19 @@
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static int write_data(int sock, void *data, size_t len) {
+  int ret;
   int transmitted = 0;
   while(transmitted < len) {
-    transmitted += zsock_send(sock, transmitted + (char*)data, len - transmitted, 0);
-    if(transmitted < 0) {
+    ret = zsock_send(sock, transmitted + (char*)data, len - transmitted, 0);
+    if(ret < 0) {
       LOG_ERR("Failed to transmit data");
       return -1;
     }
+    transmitted += ret;
   }
   return transmitted;
 }
+
 
 int svc_send_protocol_version_request(int sock) {
   int ret;
