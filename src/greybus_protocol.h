@@ -8,6 +8,7 @@
 #include <zephyr/kernel.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 /* Version of the Greybus SVC protocol we support */
 #define GB_SVC_VERSION_MAJOR		0x00
@@ -73,12 +74,19 @@ struct gb_message {
 
 struct gb_operation {
   int sock;
+  uint16_t operation_id;
+  bool request_sent;
+  bool response_recieved;
   struct gb_message *request;
   struct gb_message *response;
+  sys_dnode_t node;
 };
 
-struct gb_operation* greybus_alloc_operation(int);
-int greybus_alloc_request(struct gb_operation*, void*, size_t);
+struct gb_operation* greybus_alloc_operation(int, sys_dlist_t*);
+int greybus_alloc_request(struct gb_operation*, void*, size_t, uint8_t);
 void greybus_dealloc_operation(struct gb_operation*);
+
+int greybus_send_message(struct gb_message*);
+struct gb_message *greybus_recieve_message(int);
 
 #endif

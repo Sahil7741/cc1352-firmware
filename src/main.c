@@ -7,6 +7,7 @@
 #include "greybus_protocol.h"
 #include "node_table.h"
 #include "svc.h"
+#include "zephyr/sys/dlist.h"
 #include <stdbool.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
@@ -28,6 +29,8 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
+static sys_dlist_t greybus_operations_list = SYS_DLIST_STATIC_INIT(&greybus_operations_list);
+
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 
 K_MUTEX_DEFINE(greybus_nodes_mutex);
@@ -37,6 +40,31 @@ void node_discovery_entry(void *, void *, void *);
 // Thread responseible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
+
+static void node_manager(void *p1, void *p2, void *p3) {
+  struct zsock_pollfd fds[5];
+  size_t len = 0;
+  size_t i;
+  int ret;
+
+  while(1) {
+    for(i = 0; i < len; ++i) {
+      fds[i].events = POLLIN | POLLOUT | POLLHUP;
+    }
+
+    ret = zsock_poll(fds, len, 100);
+    if (ret > 0) {
+      for(i = 0; i < len; ++i) {
+        if (fds[i].revents & ZSOCK_POLLIN) {
+          LOG_DBG("Some data is available to be read");
+        }
+        if (fds[i].revents & ZSOCK_POLLOUT) {
+          LOG_DBG("Data can be written");
+        }
+      }
+    }
+  }
+}
 
 static int connect_to_node(const struct sockaddr *addr) {
   int ret, sock;
@@ -84,28 +112,14 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   return 1;
 }
 
-static int read_data(int sock, void *data, size_t len) {
-  int ret;
-  int recieved = 0;
-  while (recieved < len) {
-    ret = zsock_recv(sock, recieved + (char *)data, len - recieved, 0);
-    if (ret < 0) {
-      LOG_ERR("Failed to recieve data");
-      return -1;
-    }
-    recieved += ret;
-  }
-  return recieved;
-}
-
 static void *node_handler_entry(void *arg) {
   struct sockaddr_in6 node_addr;
   int ret;
   int cport_sockets[5];
   size_t num_cports = 0;
 
-  struct gb_operation_msg_hdr hdr;
-  struct gb_svc_version_request req;
+  // struct gb_operation_msg_hdr hdr;
+  // struct gb_svc_version_request req;
 
   if (arg == NULL) {
     LOG_WRN("NULL args");
@@ -129,22 +143,15 @@ static void *node_handler_entry(void *arg) {
   cport_sockets[num_cports] = ret;
   num_cports++;
 
-  ret = svc_send_protocol_version_request(cport_sockets[0]);
+  ret = svc_send_protocol_version_request(cport_sockets[0], &greybus_operations_list);
   if (!ret) {
     LOG_DBG("Sent svc protocol version request");
   }
 
-  ret = read_data(cport_sockets[0], &hdr, sizeof(struct gb_operation_msg_hdr));
-  if (ret < 0) {
-    LOG_DBG("Failed to read operation msg header");
-  } else {
-    ret = read_data(cport_sockets[0], &req,
-                    sizeof(struct gb_svc_version_request));
-    if (ret < 0) {
-      LOG_DBG("Failed to read operation msg data");
-    } else {
-      LOG_DBG("NODE SVC version: %d.%d", req.major, req.minor);
-    }
+  struct gb_message *response = greybus_recieve_message(cport_sockets[0]);
+  if (response != NULL) {
+    struct gb_svc_version_request *req = response->payload;
+    LOG_DBG("NODE SVC version: %d.%d", req->major, req->minor);
   }
 
   while (1) {

@@ -5,43 +5,20 @@
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-static int write_data(int sock, void *data, size_t len) {
+int svc_send_protocol_version_request(int sock, sys_dlist_t *operations_list) {
   int ret;
-  int transmitted = 0;
-  while(transmitted < len) {
-    ret = zsock_send(sock, transmitted + (char*)data, len - transmitted, 0);
-    if(ret < 0) {
-      LOG_ERR("Failed to transmit data");
-      return -1;
-    }
-    transmitted += ret;
-  }
-  return transmitted;
-}
 
-
-int svc_send_protocol_version_request(int sock) {
-  int ret;
+  struct gb_operation *op = greybus_alloc_operation(sock, operations_list);
   struct gb_svc_version_request req;
-  struct gb_operation_msg_hdr hdr;
 
   req.major = GB_SVC_VERSION_MAJOR;
   req.minor = GB_SVC_VERSION_MINOR;
 
-  hdr.id = 1;
-  hdr.type = GB_SVC_TYPE_PROTOCOL_VERSION;
-  hdr.status = 0;
-  hdr.size = sizeof(struct gb_svc_version_request) + sizeof(struct gb_operation_msg_hdr);
+  greybus_alloc_request(op, &req, sizeof(struct gb_svc_version_request), GB_SVC_TYPE_PROTOCOL_VERSION);
 
-  ret = write_data(sock, &hdr, sizeof(struct gb_operation_msg_hdr));
+  ret = greybus_send_message(op->request);
   if(ret < 0) {
-    LOG_ERR("Failed to send greybus header: %d", errno);
-    return -1;
-  }
-
-  ret = write_data(sock, &req, sizeof(struct gb_svc_version_request));
-  if(ret < 0) {
-    LOG_ERR("Failed to send greybus svc version data");
+    LOG_ERR("Failed to send greybus svc version message");
     return -1;
   }
 
