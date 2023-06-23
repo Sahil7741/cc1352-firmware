@@ -41,7 +41,7 @@ static void greybus_dealloc_message(struct gb_message* msg) {
   k_free(msg);
 }
 
-struct gb_operation* greybus_alloc_operation(int sock, sys_dlist_t *list_head) {
+struct gb_operation* greybus_alloc_operation(int sock) {
   struct gb_operation *op = k_malloc(sizeof(struct gb_operation));
   if(!op) {
     LOG_ERR("Failed to allocate Greybus Operation");
@@ -51,11 +51,14 @@ struct gb_operation* greybus_alloc_operation(int sock, sys_dlist_t *list_head) {
   op->request_sent = false;
   op->response_recieved = false;
   op->operation_id = 1;
-  sys_dlist_append(list_head, &op->node);
   op->response = NULL;
   op->request = NULL;
 
   return op;
+}
+
+void greybus_operation_ready(struct gb_operation *op, sys_dlist_t *list_head) {
+  sys_dlist_append(list_head, &op->node);
 }
 
 void greybus_dealloc_operation(struct gb_operation *op) {

@@ -29,37 +29,66 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
-static sys_dlist_t greybus_operations_list = SYS_DLIST_STATIC_INIT(&greybus_operations_list);
+static sys_dlist_t greybus_operations_list =
+    SYS_DLIST_STATIC_INIT(&greybus_operations_list);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
+K_MSGQ_DEFINE(socket_msgq, sizeof(int), 10, 4);
 
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 
 void node_discovery_entry(void *, void *, void *);
+void node_manager_entry(void *, void *, void *);
 
 // Thread responseible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
 
-static void node_manager(void *p1, void *p2, void *p3) {
+K_THREAD_DEFINE(node_manager, 2048, node_manager_entry, NULL, NULL, NULL, 5, 0,
+                0);
+
+void node_manager_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[5];
   size_t len = 0;
   size_t i;
   int ret;
+  struct gb_operation *op;
+  struct gb_message *msg;
 
-  while(1) {
-    for(i = 0; i < len; ++i) {
+  while (1) {
+    if (k_msgq_get(&socket_msgq, &fds[len], K_MSEC(100)) == 0) {
+      len++;
+    }
+
+    for (i = 0; i < len; ++i) {
       fds[i].events = POLLIN | POLLOUT | POLLHUP;
     }
 
     ret = zsock_poll(fds, len, 100);
     if (ret > 0) {
-      for(i = 0; i < len; ++i) {
+      for (i = 0; i < len; ++i) {
         if (fds[i].revents & ZSOCK_POLLIN) {
-          LOG_DBG("Some data is available to be read");
+          msg = greybus_recieve_message(fds[i].fd);
+          if (msg != NULL) {
+            SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
+              if (!op->response_recieved && msg->header.id == op->operation_id) {
+                op->response_recieved = true;
+                op->response = msg;
+                LOG_DBG("Operation with ID %u completed", msg->header.id);
+              }
+            }
+          }
         }
         if (fds[i].revents & ZSOCK_POLLOUT) {
-          LOG_DBG("Data can be written");
+          SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
+            if (op->request_sent == false && op->sock == fds[i].fd) {
+              ret = greybus_send_message(op->request);
+              if (ret == 0) {
+                LOG_DBG("Request sent");
+                op->request_sent = true;
+              }
+            }
+          }
         }
       }
     }
@@ -118,9 +147,6 @@ static void *node_handler_entry(void *arg) {
   int cport_sockets[5];
   size_t num_cports = 0;
 
-  // struct gb_operation_msg_hdr hdr;
-  // struct gb_svc_version_request req;
-
   if (arg == NULL) {
     LOG_WRN("NULL args");
     return NULL;
@@ -143,20 +169,15 @@ static void *node_handler_entry(void *arg) {
   cport_sockets[num_cports] = ret;
   num_cports++;
 
-  ret = svc_send_protocol_version_request(cport_sockets[0], &greybus_operations_list);
+  k_msgq_put(&socket_msgq, &ret, K_FOREVER);
+
+  ret = svc_send_protocol_version_request(cport_sockets[0],
+                                          &greybus_operations_list);
   if (!ret) {
     LOG_DBG("Sent svc protocol version request");
   }
 
-  struct gb_message *response = greybus_recieve_message(cport_sockets[0]);
-  if (response != NULL) {
-    struct gb_svc_version_request *req = response->payload;
-    LOG_DBG("NODE SVC version: %d.%d", req->major, req->minor);
-  }
-
-  while (1) {
-    k_sleep(K_MSEC(2000));
-  }
+  return NULL;
 
 cleanup:
   k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);

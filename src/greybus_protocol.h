@@ -73,18 +73,19 @@ struct gb_message {
 };
 
 struct gb_operation {
+  sys_dnode_t node;
   int sock;
   uint16_t operation_id;
   bool request_sent;
   bool response_recieved;
   struct gb_message *request;
   struct gb_message *response;
-  sys_dnode_t node;
 };
 
-struct gb_operation* greybus_alloc_operation(int, sys_dlist_t*);
+struct gb_operation* greybus_alloc_operation(int);
 int greybus_alloc_request(struct gb_operation*, void*, size_t, uint8_t);
 void greybus_dealloc_operation(struct gb_operation*);
+void greybus_operation_ready(struct gb_operation*, sys_dlist_t*);
 
 int greybus_send_message(struct gb_message*);
 struct gb_message *greybus_recieve_message(int);
