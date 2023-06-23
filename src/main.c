@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "node_table.h"
+#include "svc.h"
 #include <stdbool.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
@@ -14,7 +16,6 @@
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/posix/pthread.h>
-#include "node_table.h"
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -111,7 +112,11 @@ static void *node_handler_entry(void *arg) {
   num_cports++;
 
   while (1) {
-    LOG_DBG("Hello From the Pthread");
+    ret = svc_send_protocol_version_request(cport_sockets[0]);
+    if (!ret) {
+      LOG_DBG("Sent svc protocol version request");
+    }
+
     k_sleep(K_MSEC(2000));
   }
 
