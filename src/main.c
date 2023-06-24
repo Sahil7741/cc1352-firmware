@@ -17,7 +17,6 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
-#include <zephyr/posix/pthread.h>
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -25,7 +24,6 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
-#define DEFAULT_STACK_SIZE CONFIG_PTHREAD_DYNAMIC_STACK_DEFAULT_SIZE
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
@@ -34,18 +32,24 @@ static sys_dlist_t greybus_operations_list =
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(socket_msgq, sizeof(int), 10, 4);
+K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 
 void node_discovery_entry(void *, void *, void *);
 void node_manager_entry(void *, void *, void *);
+void node_setup_entry(void *, void *, void *);
 
-// Thread responseible for beagleconnect node discovery.
+// Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
 
+// Thread responsible for reading and writing to greybus nodes
 K_THREAD_DEFINE(node_manager, 2048, node_manager_entry, NULL, NULL, NULL, 5, 0,
                 0);
+
+// Thread responsible for setting up a newly discovered node
+K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
 void node_manager_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[5];
@@ -71,7 +75,8 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
           msg = greybus_recieve_message(fds[i].fd);
           if (msg != NULL) {
             SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
-              if (!op->response_recieved && msg->header.id == op->operation_id) {
+              if (!op->response_recieved &&
+                  msg->header.id == op->operation_id) {
                 op->response_recieved = true;
                 op->response = msg;
                 LOG_DBG("Operation with ID %u completed", msg->header.id);
@@ -141,59 +146,38 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   return 1;
 }
 
-static void *node_handler_entry(void *arg) {
+void node_setup_entry(void *p1, void *p2, void *p3) {
   struct sockaddr_in6 node_addr;
   int ret;
-  int cport_sockets[5];
-  size_t num_cports = 0;
 
-  if (arg == NULL) {
-    LOG_WRN("NULL args");
-    return NULL;
+  while (k_msgq_get(&discovered_node_msgq, &node_addr.sin6_addr, K_FOREVER) ==
+         0) {
+    node_addr.sin6_family = AF_INET6;
+    node_addr.sin6_scope_id = 0;
+    node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
+
+    ret = connect_to_node((struct sockaddr *)&node_addr);
+    if (ret < 0) {
+      LOG_WRN("Failed to connect to node");
+      k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
+      node_table_remove_node(&node_addr.sin6_addr);
+      k_mutex_unlock(&greybus_nodes_mutex);
+      continue;
+    }
+
+    k_msgq_put(&socket_msgq, &ret, K_FOREVER);
+
+    ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
+    if (!ret) {
+      LOG_DBG("Sent svc protocol version request");
+    }
   }
-
-  memcpy((void *)&node_addr.sin6_addr, arg, sizeof(struct in6_addr));
-  free(arg);
-
-  node_addr.sin6_family = AF_INET6;
-  node_addr.sin6_scope_id = 0;
-
-  node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
-  ret = connect_to_node((struct sockaddr *)&node_addr);
-
-  if (ret < 0) {
-    LOG_WRN("Failed to connect to node");
-    goto cleanup;
-  }
-
-  cport_sockets[num_cports] = ret;
-  num_cports++;
-
-  k_msgq_put(&socket_msgq, &ret, K_FOREVER);
-
-  ret = svc_send_protocol_version_request(cport_sockets[0],
-                                          &greybus_operations_list);
-  if (!ret) {
-    LOG_DBG("Sent svc protocol version request");
-  }
-
-  return NULL;
-
-cleanup:
-  k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-  node_table_remove_node(&node_addr.sin6_addr);
-  k_mutex_unlock(&greybus_nodes_mutex);
-  return NULL;
 }
 
 void node_discovery_entry(void *p1, void *p2, void *p3) {
   // Peform node discovery in infinte loop
   int ret;
   struct in6_addr node_array[MAX_GREYBUS_NODES];
-  pthread_t tid;
-  pthread_attr_t t_attr;
-  pthread_attr_init(&t_attr);
-  t_attr.stacksize = DEFAULT_STACK_SIZE;
 
   while (1) {
     ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
@@ -210,15 +194,7 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
           LOG_WRN("Failed to add node");
         } else {
           LOG_INF("Added Greybus Node");
-
-          struct in6_addr *temp_addr =
-              (struct in6_addr *)malloc(sizeof(struct in6_addr));
-          memcpy(temp_addr, &node_array[i], sizeof(struct in6_addr));
-          ret = pthread_create(&tid, &t_attr, node_handler_entry,
-                               (void *)temp_addr);
-          if (ret != 0) {
-            LOG_WRN("Failed to create Pthread");
-          }
+          k_msgq_put(&discovered_node_msgq, &node_array[i], K_FOREVER);
         }
       }
       k_mutex_unlock(&greybus_nodes_mutex);
