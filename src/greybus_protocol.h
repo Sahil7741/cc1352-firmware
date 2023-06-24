@@ -111,10 +111,11 @@ static inline bool is_message_response(struct gb_message *msg) {
  * Note: This does not allocate a request or a response.
  *
  * @param sock: The socket for this operation
+ * @param is_oneshot: flag to indicate if the request is unidirectional.
  *
  * @return heap allocated gb_operation
  */
-struct gb_operation *greybus_alloc_operation(int);
+struct gb_operation *greybus_alloc_operation(int, bool);
 
 /*
  * Allocate a request on a pre-allocated greybus operation

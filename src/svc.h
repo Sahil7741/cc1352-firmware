@@ -4,11 +4,16 @@
 #include <stdint.h>
 #include <zephyr/sys/dlist.h>
 
-struct gb_svc_version_request {
-	uint8_t major;
-	uint8_t minor;
-} __packed;
-
+/*
+ * Create SVC_TYPE_PROTOCOL_VERSION greybus operation and queue it for sending.
+ *
+ * Note: This does not immediately send the request.
+ *
+ * @param sock: Socket for the cport
+ * @param list: head of operations dlist.
+ *
+ * @return 0 if successful, else error.
+ */
 int svc_send_protocol_version_request(int, sys_dlist_t*);
 
 #endif

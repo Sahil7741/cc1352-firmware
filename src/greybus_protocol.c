@@ -1,8 +1,12 @@
 #include "greybus_protocol.h"
+#include <limits.h>
+#include <stdint.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
+
+static atomic_t operation_id_counter = ATOMIC_INIT(1);
 
 static int write_data(int sock, const void *data, size_t len) {
   int ret;
@@ -41,17 +45,26 @@ static void greybus_dealloc_message(struct gb_message *msg) {
   k_free(msg);
 }
 
-struct gb_operation *greybus_alloc_operation(int sock) {
+struct gb_operation *greybus_alloc_operation(int sock, bool is_oneshot) {
   struct gb_operation *op = k_malloc(sizeof(struct gb_operation));
   if (!op) {
     LOG_ERR("Failed to allocate Greybus Operation");
     return NULL;
   }
   op->sock = sock;
-  op->operation_id = 1;
   op->response = NULL;
   op->request = NULL;
   op->request_sent = false;
+
+  if (is_oneshot) {
+    op->operation_id = 0;
+  } else {
+    atomic_val_t temp = atomic_inc(&operation_id_counter);
+    if (temp == UINT16_MAX) {
+      atomic_set(&operation_id_counter, 1);
+    }
+    op->operation_id = temp;
+  }
 
   return op;
 }

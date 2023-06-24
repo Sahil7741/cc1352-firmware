@@ -219,6 +219,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
 
     k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
     ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
+    ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
     k_mutex_unlock(&greybus_operations_mutex);
     if (!ret) {
       LOG_DBG("Sent svc protocol version request");
