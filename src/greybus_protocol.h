@@ -14,8 +14,13 @@
 #define GB_SVC_VERSION_MAJOR 0x00
 #define GB_SVC_VERSION_MINOR 0x01
 
+/* Greybus Control request types */
+#define GB_CONTROL_TYPE_PROTOCOL_VERSION 0x01
+#define GB_CONTROL_TYPE_GET_MANIFEST_SIZE 0x03
+#define GB_CONTROL_TYPE_GET_MANIFEST 0x04
+
 /* Greybus SVC request types */
-#define GB_SVC_TYPE_PROTOCOL_VERSION 0x01
+#define GB_SVC_TYPE_PING 0x13
 
 /*
  * All operation messages (both requests and responses) begin with

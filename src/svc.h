@@ -16,4 +16,6 @@
  */
 int svc_send_protocol_version_request(int, sys_dlist_t*);
 
+int svc_send_ping(int, sys_dlist_t*);
+
 #endif
