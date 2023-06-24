@@ -31,42 +31,49 @@ static sys_dlist_t greybus_operations_list =
     SYS_DLIST_STATIC_INIT(&greybus_operations_list);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
-K_MSGQ_DEFINE(socket_msgq, sizeof(int), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
+K_MSGQ_DEFINE(node_writer_msgq, sizeof(int), 10, 4);
+K_MSGQ_DEFINE(node_reader_msgq, sizeof(int), 10, 4);
 
 K_MUTEX_DEFINE(greybus_nodes_mutex);
 K_MUTEX_DEFINE(greybus_operations_mutex);
 
 void node_discovery_entry(void *, void *, void *);
-void node_manager_entry(void *, void *, void *);
+// void node_manager_entry(void *, void *, void *);
 void node_setup_entry(void *, void *, void *);
+
+void node_writer_entry(void*, void*, void*);
+void node_reader_entry(void*, void*, void*);
 
 // Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
 
-// Thread responsible for reading and writing to greybus nodes
-K_THREAD_DEFINE(node_manager, 2048, node_manager_entry, NULL, NULL, NULL, 5, 0,
-                0);
+// Thread responsible for writing to greybus nodes
+K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5,
+                0, 0);
+
+// Thread responsible for reading from greybus nodes
+K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5,
+                0, 0);
 
 // Thread responsible for setting up a newly discovered node
 K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
-void node_manager_entry(void *p1, void *p2, void *p3) {
+void node_writer_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[5];
   size_t len = 0;
   size_t i;
   int ret;
   struct gb_operation *op, *op_safe;
-  struct gb_message *msg;
 
   while (1) {
-    if (k_msgq_get(&socket_msgq, &fds[len], K_MSEC(100)) == 0) {
+    if (k_msgq_get(&node_writer_msgq, &fds[len], K_MSEC(100)) == 0) {
       len++;
     }
 
     for (i = 0; i < len; ++i) {
-      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT | ZSOCK_POLLHUP;
+      fds[i].events = ZSOCK_POLLOUT;
     }
 
     ret = zsock_poll(fds, len, 100);
@@ -89,7 +96,30 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
         }
       }
       k_mutex_unlock(&greybus_operations_mutex);
+    }
+    k_yield();
+  }
+}
 
+void node_reader_entry(void *p1, void *p2, void *p3) {
+  struct zsock_pollfd fds[5];
+  size_t len = 0;
+  size_t i;
+  int ret;
+  struct gb_operation *op, *op_safe;
+  struct gb_message *msg;
+
+  while (1) {
+    if (k_msgq_get(&node_reader_msgq, &fds[len], K_MSEC(100)) == 0) {
+      len++;
+    }
+
+    for (i = 0; i < len; ++i) {
+      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLHUP;
+    }
+
+    ret = zsock_poll(fds, len, 100);
+    if (ret > 0) {
       // Read any available responses
       for (i = 0; i < len; ++i) {
         if (fds[i].revents & ZSOCK_POLLIN) {
@@ -111,8 +141,10 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
         }
       }
     }
+    k_yield();
   }
 }
+
 
 static int connect_to_node(const struct sockaddr *addr) {
   int ret, sock;
@@ -179,7 +211,8 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
       continue;
     }
 
-    k_msgq_put(&socket_msgq, &ret, K_FOREVER);
+    k_msgq_put(&node_reader_msgq, &ret, K_FOREVER);
+    k_msgq_put(&node_writer_msgq, &ret, K_FOREVER);
 
     k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
     ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
@@ -191,7 +224,6 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
 }
 
 void node_discovery_entry(void *p1, void *p2, void *p3) {
-  // Peform node discovery in infinte loop
   int ret;
   struct in6_addr node_array[MAX_GREYBUS_NODES];
 
