@@ -35,6 +35,7 @@ K_MSGQ_DEFINE(socket_msgq, sizeof(int), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
 K_MUTEX_DEFINE(greybus_nodes_mutex);
+K_MUTEX_DEFINE(greybus_operations_mutex);
 
 void node_discovery_entry(void *, void *, void *);
 void node_manager_entry(void *, void *, void *);
@@ -56,7 +57,7 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct gb_operation *op;
+  struct gb_operation *op, *op_safe;
   struct gb_message *msg;
 
   while (1) {
@@ -74,17 +75,21 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
         if (fds[i].revents & ZSOCK_POLLIN) {
           msg = greybus_recieve_message(fds[i].fd);
           if (msg != NULL) {
-            SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
+            k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
+            SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe, node) {
               if (!op->response_recieved &&
                   msg->header.id == op->operation_id) {
                 op->response_recieved = true;
                 op->response = msg;
+                sys_dlist_remove(&op->node);
                 LOG_DBG("Operation with ID %u completed", msg->header.id);
               }
             }
+            k_mutex_unlock(&greybus_operations_mutex);
           }
         }
         if (fds[i].revents & ZSOCK_POLLOUT) {
+          k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
           SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
             if (op->request_sent == false && op->sock == fds[i].fd) {
               ret = greybus_send_message(op->request);
@@ -94,6 +99,7 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
               }
             }
           }
+          k_mutex_unlock(&greybus_operations_mutex);
         }
       }
     }
@@ -167,7 +173,9 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
 
     k_msgq_put(&socket_msgq, &ret, K_FOREVER);
 
+    k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
     ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
+    k_mutex_unlock(&greybus_operations_mutex);
     if (!ret) {
       LOG_DBG("Sent svc protocol version request");
     }
