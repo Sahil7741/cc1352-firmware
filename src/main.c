@@ -66,17 +66,38 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
     }
 
     for (i = 0; i < len; ++i) {
-      fds[i].events = POLLIN | POLLOUT | POLLHUP;
+      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT | ZSOCK_POLLHUP;
     }
 
     ret = zsock_poll(fds, len, 100);
     if (ret > 0) {
+      /// Send all pending requests
+      k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
+      SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
+                                        node) {
+        if (!op->request_sent) {
+          for (i = 0; i < len; ++i) {
+            if (op->sock == fds[i].fd && fds[i].revents & ZSOCK_POLLOUT) {
+              ret = greybus_send_message(op->request);
+              if (ret == 0) {
+                LOG_DBG("Request sent");
+                op->request_sent = true;
+              }
+              break;
+            }
+          }
+        }
+      }
+      k_mutex_unlock(&greybus_operations_mutex);
+
+      // Read any available responses
       for (i = 0; i < len; ++i) {
         if (fds[i].revents & ZSOCK_POLLIN) {
           msg = greybus_recieve_message(fds[i].fd);
           if (msg != NULL) {
             k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
-            SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe, node) {
+            SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
+                                              op_safe, node) {
               if (!op->response_recieved &&
                   msg->header.id == op->operation_id) {
                 op->response_recieved = true;
@@ -87,19 +108,6 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
             }
             k_mutex_unlock(&greybus_operations_mutex);
           }
-        }
-        if (fds[i].revents & ZSOCK_POLLOUT) {
-          k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
-          SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
-            if (op->request_sent == false && op->sock == fds[i].fd) {
-              ret = greybus_send_message(op->request);
-              if (ret == 0) {
-                LOG_DBG("Request sent");
-                op->request_sent = true;
-              }
-            }
-          }
-          k_mutex_unlock(&greybus_operations_mutex);
         }
       }
     }
