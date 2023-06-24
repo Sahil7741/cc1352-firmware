@@ -86,6 +86,12 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
                 op->request_sent = true;
               }
               break;
+
+              // Deallocate operation if it is unidirectional since there will
+              // be no response.
+              if (is_operation_unidirectional(op)) {
+                greybus_dealloc_operation(op);
+              }
             }
           }
         }
@@ -121,20 +127,20 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
           msg = greybus_recieve_message(fds[i].fd);
           if (msg != NULL) {
             // Handle if the msg is a response to an operation
-            k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
-            SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
-                                              op_safe, node) {
-              if (!op->response_recieved &&
-                  msg->header.id == op->operation_id) {
-                op->response_recieved = true;
-                op->response = msg;
-                LOG_DBG("Operation with ID %u completed", msg->header.id);
-                greybus_dealloc_operation(op);
+            if (is_message_response(msg)) {
+              k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
+              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
+                                                op_safe, node) {
+                if (msg->header.id == op->operation_id) {
+                  op->response = msg;
+                  LOG_DBG("Operation with ID %u completed", msg->header.id);
+                  greybus_dealloc_operation(op);
+                }
               }
+              k_mutex_unlock(&greybus_operations_mutex);
+            } else {
+              // Handle if the msg it the request from node.
             }
-            k_mutex_unlock(&greybus_operations_mutex);
-
-            // Handle if the msg it the request from node.
           }
         }
       }
