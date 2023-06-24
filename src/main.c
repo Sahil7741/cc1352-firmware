@@ -18,15 +18,15 @@
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
 
-LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
-
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
 
-static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
+static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+// List of all in-flight greybus operations
 static sys_dlist_t greybus_operations_list =
     SYS_DLIST_STATIC_INIT(&greybus_operations_list);
 
@@ -39,24 +39,19 @@ K_MUTEX_DEFINE(greybus_nodes_mutex);
 K_MUTEX_DEFINE(greybus_operations_mutex);
 
 void node_discovery_entry(void *, void *, void *);
-// void node_manager_entry(void *, void *, void *);
 void node_setup_entry(void *, void *, void *);
-
-void node_writer_entry(void*, void*, void*);
-void node_reader_entry(void*, void*, void*);
+void node_writer_entry(void *, void *, void *);
+void node_reader_entry(void *, void *, void *);
 
 // Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
-
 // Thread responsible for writing to greybus nodes
-K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5,
-                0, 0);
-
+K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5, 0,
+                0);
 // Thread responsible for reading from greybus nodes
-K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5,
-                0, 0);
-
+K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5, 0,
+                0);
 // Thread responsible for setting up a newly discovered node
 K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
@@ -125,6 +120,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
         if (fds[i].revents & ZSOCK_POLLIN) {
           msg = greybus_recieve_message(fds[i].fd);
           if (msg != NULL) {
+            // Handle if the msg is a response to an operation
             k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
             SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
                                               op_safe, node) {
@@ -132,11 +128,13 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
                   msg->header.id == op->operation_id) {
                 op->response_recieved = true;
                 op->response = msg;
-                sys_dlist_remove(&op->node);
                 LOG_DBG("Operation with ID %u completed", msg->header.id);
+                greybus_dealloc_operation(op);
               }
             }
             k_mutex_unlock(&greybus_operations_mutex);
+
+            // Handle if the msg it the request from node.
           }
         }
       }
@@ -144,7 +142,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
     k_yield();
   }
 }
-
 
 static int connect_to_node(const struct sockaddr *addr) {
   int ret, sock;

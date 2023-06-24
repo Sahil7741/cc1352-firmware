@@ -82,12 +82,53 @@ struct gb_operation {
   struct gb_message *response;
 };
 
+/*
+ * Allocate a greybus operation.
+ *
+ * Note: This does not allocate a request or a response.
+ *
+ * @param sock: The socket for this operation
+ *
+ * @return heap allocated gb_operation
+ */
 struct gb_operation* greybus_alloc_operation(int);
-int greybus_alloc_request(struct gb_operation*, void*, size_t, uint8_t);
+
+/*
+ * Allocate a request on a pre-allocated greybus operation
+ *
+ * @param op: pointer to greybus operation
+ * @param data: pointer to payload for request
+ * @param payload_len: size of payload
+ * @param type: type of greybus operation
+ *
+ * @return 0 on success, else error
+ */
+int greybus_alloc_request(struct gb_operation*, const void*, size_t, uint8_t);
+
+/*
+ * Deallocate greybus operation. It recursively deallocates any allocated request and response.
+ */
 void greybus_dealloc_operation(struct gb_operation*);
+
+/*
+ * Add greybus operation to the list of in-flight operations.
+ *
+ * Note: This is not thread safe.
+ */
 void greybus_operation_ready(struct gb_operation*, sys_dlist_t*);
 
-int greybus_send_message(struct gb_message*);
+/*
+ * Send a greybus message. This only works for messages associated with a greybus operation for now.
+ */
+int greybus_send_message(const struct gb_message*);
+
+/*
+ * Receive a greybus message over a socket.
+ *
+ * @param sock: Greybus communication socket.
+ *
+ * @return a heap allocated greybus message
+ */
 struct gb_message *greybus_recieve_message(int);
 
 #endif

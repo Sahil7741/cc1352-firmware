@@ -4,7 +4,7 @@
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-static int write_data(int sock, void *data, size_t len) {
+static int write_data(int sock, const void *data, size_t len) {
   int ret;
   int transmitted = 0;
   while(transmitted < len) {
@@ -33,7 +33,7 @@ static int read_data(int sock, void *data, size_t len) {
 }
 
 static void greybus_dealloc_message(struct gb_message* msg) {
-  if(!msg) {
+  if(msg == NULL) {
     return;
   }
 
@@ -62,7 +62,7 @@ void greybus_operation_ready(struct gb_operation *op, sys_dlist_t *list_head) {
 }
 
 void greybus_dealloc_operation(struct gb_operation *op) {
-  if(!op) {
+  if(op == NULL) {
     return;
   }
 
@@ -74,7 +74,7 @@ void greybus_dealloc_operation(struct gb_operation *op) {
   k_free(op);
 }
 
-int greybus_send_message(struct gb_message *msg) {
+int greybus_send_message(const struct gb_message *msg) {
   int ret;
   struct gb_operation *op = msg->operation;
 
@@ -120,7 +120,7 @@ struct gb_message *greybus_recieve_message(int sock) {
 }
 
 
-int greybus_alloc_request(struct gb_operation *op, void *payload, size_t payload_len, uint8_t request_type) {
+int greybus_alloc_request(struct gb_operation *op, const void *payload, size_t payload_len, uint8_t request_type) {
   op->request = k_malloc(sizeof(struct gb_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
@@ -138,7 +138,7 @@ int greybus_alloc_request(struct gb_operation *op, void *payload, size_t payload
   op->request->header.type = request_type;
   op->request->header.status = 0;
 
-  memcpy(&op->request->payload, payload, payload_len);
+  memcpy(op->request->payload, payload, payload_len);
   op->request->payload_size = payload_len;
 
   op->request->operation = op;
