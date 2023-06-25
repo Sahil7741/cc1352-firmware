@@ -1,5 +1,5 @@
 #include "svc.h"
-#include "greybus_protocol.h"
+#include "operations.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 
@@ -10,9 +10,9 @@ struct gb_svc_version_request {
 	uint8_t minor;
 } __packed;
 
-int svc_send_protocol_version_request(int sock, sys_dlist_t *operations_list) {
+int svc_send_protocol_version_request(int sock) {
   int ret;
-  struct gb_operation *op = greybus_alloc_operation(sock, false);
+  struct greybus_operation *op = greybus_operation_alloc(sock, false);
   if (op == NULL) {
     return -1;
   }
@@ -22,29 +22,29 @@ int svc_send_protocol_version_request(int sock, sys_dlist_t *operations_list) {
   req.major = GB_SVC_VERSION_MAJOR;
   req.minor = GB_SVC_VERSION_MINOR;
 
-  ret = greybus_alloc_request(op, &req, sizeof(struct gb_svc_version_request), GB_CONTROL_TYPE_PROTOCOL_VERSION);
+  ret = greybus_operation_request_alloc(op, &req, sizeof(struct gb_svc_version_request), GB_CONTROL_TYPE_PROTOCOL_VERSION);
   if(ret != 0) {
     return -1;
   }
 
-  greybus_operation_ready(op, operations_list);
+  greybus_operation_queue(op);
 
   return 0;
 }
 
-int svc_send_ping(int sock, sys_dlist_t *operations_list) {
+int svc_send_ping(int sock) {
   int ret;
-  struct gb_operation *op = greybus_alloc_operation(sock, false);
+  struct greybus_operation *op = greybus_operation_alloc(sock, false);
   if (op == NULL) {
     return -1;
   }
 
-  ret = greybus_alloc_request(op, NULL, 0, GB_CONTROL_TYPE_PROTOCOL_VERSION);
+  ret = greybus_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_PROTOCOL_VERSION);
   if(ret != 0) {
     return -1;
   }
 
-  greybus_operation_ready(op, operations_list);
+  greybus_operation_queue(op);
 
   return 0;
 }

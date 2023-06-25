@@ -2,7 +2,6 @@
 #define SVC_H
 
 #include <stdint.h>
-#include <zephyr/sys/dlist.h>
 
 /*
  * Create SVC_TYPE_PROTOCOL_VERSION greybus operation and queue it for sending.
@@ -14,8 +13,8 @@
  *
  * @return 0 if successful, else error.
  */
-int svc_send_protocol_version_request(int, sys_dlist_t*);
+int svc_send_protocol_version_request(int);
 
-int svc_send_ping(int, sys_dlist_t*);
+int svc_send_ping(int);
 
 #endif

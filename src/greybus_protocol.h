@@ -7,8 +7,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
-#include <zephyr/kernel.h>
 
 /* Version of the Greybus SVC protocol we support */
 #define GB_SVC_VERSION_MAJOR 0x00
@@ -49,7 +47,7 @@ struct gb_operation_msg_hdr {
   uint8_t type;   /* E.g GB_I2C_TYPE_TRANSFER */
   uint8_t status; /* Result of request (in responses only) */
   uint8_t pad[2]; /* must be zero (ignore when read) */
-} __packed;
+};
 
 enum gb_operation_type {
   GB_TYPE_RESPONSE_FLAG = 0x80,
@@ -69,97 +67,5 @@ enum gb_operation_result {
   GB_OP_UNKNOWN_ERROR = 0xfe,
   GB_OP_INTERNAL = 0xff,
 };
-
-struct gb_message {
-  struct gb_operation *operation;
-  struct gb_operation_msg_hdr header;
-  void *payload;
-  size_t payload_size;
-};
-
-struct gb_operation {
-  int sock;
-  uint16_t operation_id;
-  bool request_sent;
-  struct gb_message *request;
-  struct gb_message *response;
-  sys_dnode_t node;
-};
-
-/*
- * Check if the greybus operation is unidirectional.
- * These messages will not have a response and thus should be freed once request
- * is sent.
- *
- * @param op: greybus operation
- *
- * @return true if operation is unidirectional, else false.
- */
-static inline bool is_operation_unidirectional(struct gb_operation *op) {
-  return op->operation_id == 0;
-}
-
-/*
- * Check if the greybus message is a response.
- *
- * @param msg: greybus message
- *
- * @return true if message is response, else false.
- */
-static inline bool is_message_response(struct gb_message *msg) {
-  return msg->header.type & GB_TYPE_RESPONSE_FLAG;
-}
-
-/*
- * Allocate a greybus operation.
- *
- * Note: This does not allocate a request or a response.
- *
- * @param sock: The socket for this operation
- * @param is_oneshot: flag to indicate if the request is unidirectional.
- *
- * @return heap allocated gb_operation
- */
-struct gb_operation *greybus_alloc_operation(int, bool);
-
-/*
- * Allocate a request on a pre-allocated greybus operation
- *
- * @param op: pointer to greybus operation
- * @param data: pointer to payload for request
- * @param payload_len: size of payload
- * @param type: type of greybus operation
- *
- * @return 0 on success, else error
- */
-int greybus_alloc_request(struct gb_operation *, const void *, size_t, uint8_t);
-
-/*
- * Deallocate greybus operation. It recursively deallocates any allocated
- * request and response.
- */
-void greybus_dealloc_operation(struct gb_operation *);
-
-/*
- * Add greybus operation to the list of in-flight operations.
- *
- * Note: This is not thread safe.
- */
-void greybus_operation_ready(struct gb_operation *, sys_dlist_t *);
-
-/*
- * Send a greybus message. This only works for messages associated with a
- * greybus operation for now.
- */
-int greybus_send_message(const struct gb_message *);
-
-/*
- * Receive a greybus message over a socket.
- *
- * @param sock: Greybus communication socket.
- *
- * @return a heap allocated greybus message
- */
-struct gb_message *greybus_recieve_message(int);
 
 #endif

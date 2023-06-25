@@ -1,4 +1,4 @@
-#include "greybus_protocol.h"
+#include "operations.h"
 #include <limits.h>
 #include <stdint.h>
 #include <zephyr/logging/log.h>
@@ -7,6 +7,8 @@
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static atomic_t operation_id_counter = ATOMIC_INIT(1);
+static sys_dlist_t greybus_operations_list =
+    SYS_DLIST_STATIC_INIT(&greybus_operations_list);
 
 static int write_data(int sock, const void *data, size_t len) {
   int ret;
@@ -36,7 +38,7 @@ static int read_data(int sock, void *data, size_t len) {
   return recieved;
 }
 
-static void greybus_dealloc_message(struct gb_message *msg) {
+static void greybus_dealloc_message(struct greybus_message *msg) {
   if (msg == NULL) {
     return;
   }
@@ -45,8 +47,8 @@ static void greybus_dealloc_message(struct gb_message *msg) {
   k_free(msg);
 }
 
-struct gb_operation *greybus_alloc_operation(int sock, bool is_oneshot) {
-  struct gb_operation *op = k_malloc(sizeof(struct gb_operation));
+struct greybus_operation *greybus_operation_alloc(int sock, bool is_oneshot) {
+  struct greybus_operation *op = k_malloc(sizeof(struct greybus_operation));
   if (!op) {
     LOG_ERR("Failed to allocate Greybus Operation");
     return NULL;
@@ -69,11 +71,11 @@ struct gb_operation *greybus_alloc_operation(int sock, bool is_oneshot) {
   return op;
 }
 
-void greybus_operation_ready(struct gb_operation *op, sys_dlist_t *list_head) {
-  sys_dlist_append(list_head, &op->node);
+void greybus_operation_queue(struct greybus_operation *op) {
+  sys_dlist_append(&greybus_operations_list, &op->node);
 }
 
-void greybus_dealloc_operation(struct gb_operation *op) {
+void greybus_operation_dealloc(struct greybus_operation *op) {
   if (op == NULL) {
     return;
   }
@@ -86,9 +88,9 @@ void greybus_dealloc_operation(struct gb_operation *op) {
   k_free(op);
 }
 
-int greybus_send_message(const struct gb_message *msg) {
+int greybus_message_send(const struct greybus_message *msg) {
   int ret;
-  struct gb_operation *op = msg->operation;
+  struct greybus_operation *op = msg->operation;
 
   ret = write_data(op->sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
   if (ret < 0) {
@@ -103,8 +105,8 @@ int greybus_send_message(const struct gb_message *msg) {
   return 0;
 }
 
-struct gb_message *greybus_recieve_message(int sock) {
-  struct gb_message *msg = k_malloc(sizeof(struct gb_message));
+struct greybus_message *greybus_message_receive(int sock) {
+  struct greybus_message *msg = k_malloc(sizeof(struct greybus_message));
   if (msg == NULL) {
     LOG_ERR("Failed to allocate greybus message");
     return NULL;
@@ -131,9 +133,9 @@ struct gb_message *greybus_recieve_message(int sock) {
   return msg;
 }
 
-int greybus_alloc_request(struct gb_operation *op, const void *payload,
+int greybus_operation_request_alloc(struct greybus_operation *op, const void *payload,
                           size_t payload_len, uint8_t request_type) {
-  op->request = k_malloc(sizeof(struct gb_message));
+  op->request = k_malloc(sizeof(struct greybus_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
     return -1;
@@ -156,4 +158,8 @@ int greybus_alloc_request(struct gb_operation *op, const void *payload,
   op->request->operation = op;
 
   return 0;
+}
+
+sys_dlist_t *greybus_operation_queue_get() {
+  return &greybus_operations_list;
 }

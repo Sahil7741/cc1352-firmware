@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "greybus_protocol.h"
 #include "node_table.h"
+#include "operations.h"
 #include "svc.h"
 #include "zephyr/sys/dlist.h"
 #include <stdbool.h>
@@ -30,9 +30,6 @@
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
-// List of all in-flight greybus operations
-static sys_dlist_t greybus_operations_list =
-    SYS_DLIST_STATIC_INIT(&greybus_operations_list);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
@@ -62,8 +59,8 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct gb_operation *op, *op_safe;
-  struct gb_message *msg;
+  struct greybus_operation *op, *op_safe;
+  struct greybus_message *msg;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -80,17 +77,17 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
       // Read any available responses
       for (i = 0; i < len; ++i) {
         if (fds[i].revents & ZSOCK_POLLIN) {
-          msg = greybus_recieve_message(fds[i].fd);
+          msg = greybus_message_receive(fds[i].fd);
           if (msg != NULL) {
             // Handle if the msg is a response to an operation
-            if (is_message_response(msg)) {
+            if (greybus_message_is_response(msg)) {
               k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
+              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(greybus_operation_queue_get(), op,
                                                 op_safe, node) {
                 if (msg->header.id == op->operation_id) {
                   op->response = msg;
                   LOG_DBG("Operation with ID %u completed", msg->header.id);
-                  greybus_dealloc_operation(op);
+                  greybus_operation_dealloc(op);
                 }
               }
               k_mutex_unlock(&operations_queue_mutex);
@@ -112,7 +109,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct gb_operation *op, *op_safe;
+  struct greybus_operation *op, *op_safe;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -128,12 +125,12 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     if (ret > 0) {
       /// Send all pending requests
       k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-      SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
+      SYS_DLIST_FOR_EACH_CONTAINER_SAFE(greybus_operation_queue_get(), op, op_safe,
                                         node) {
         if (!op->request_sent) {
           for (i = 0; i < len; ++i) {
             if (op->sock == fds[i].fd && fds[i].revents & ZSOCK_POLLOUT) {
-              ret = greybus_send_message(op->request);
+              ret = greybus_message_send(op->request);
               if (ret == 0) {
                 LOG_DBG("Request sent");
                 op->request_sent = true;
@@ -142,8 +139,8 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
 
               // Deallocate operation if it is unidirectional since there will
               // be no response.
-              if (is_operation_unidirectional(op)) {
-                greybus_dealloc_operation(op);
+              if (greybus_operation_is_unidirectional(op)) {
+                greybus_operation_dealloc(op);
               }
             }
           }
@@ -232,7 +229,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     LOG_DBG("Added Cport0");
 
     k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-    ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
+    ret = svc_send_protocol_version_request(ret);
     k_mutex_unlock(&operations_queue_mutex);
     if (ret >= 0) {
       LOG_DBG("Sent dbg request");
