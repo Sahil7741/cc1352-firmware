@@ -33,45 +33,48 @@ static sys_dlist_t greybus_operations_list =
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
-K_MUTEX_DEFINE(greybus_operations_mutex);
-
 void node_discovery_entry(void *, void *, void *);
 void node_setup_entry(void *, void *, void *);
-void node_writer_entry(void *, void *, void *);
-void node_reader_entry(void *, void *, void *);
+void node_manager_entry(void *, void *, void *);
 
 // Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
-// Thread responsible for writing to greybus nodes
-K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5, 0,
-                0);
 // Thread responsible for reading from greybus nodes
-K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5, 0,
+K_THREAD_DEFINE(node_manager, 2048, node_manager_entry, NULL, NULL, NULL, 5, 0,
                 0);
 // Thread responsible for setting up a newly discovered node
 K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
-void node_writer_entry(void *p1, void *p2, void *p3) {
+void node_manager_entry(void *p1, void *p2, void *p3) {
+  LOG_DBG("Starting Node Manager Thread");
+
   struct zsock_pollfd fds[5];
   int sockets[5];
   size_t len = 0;
   size_t i;
   int ret;
   struct gb_operation *op, *op_safe;
+  struct gb_message *msg;
+  char tx;
 
   while (1) {
+    LOG_DBG("Get all cports");
     len = node_table_get_all_cports(sockets, 5);
+    LOG_DBG("Polling %u sockets", len);
 
     for (i = 0; i < len; ++i) {
       fds[i].fd = sockets[i];
-      fds[i].events = ZSOCK_POLLOUT;
+      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
     }
+
+    LOG_DBG("Poll Sockets");
+
+    k_sleep(K_MSEC(5000));
 
     ret = zsock_poll(fds, len, 100);
     if (ret > 0) {
       /// Send all pending requests
-      k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
       SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
                                         node) {
         if (!op->request_sent) {
@@ -93,31 +96,9 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
           }
         }
       }
-      k_mutex_unlock(&greybus_operations_mutex);
-    }
-    k_yield();
-  }
-}
 
-void node_reader_entry(void *p1, void *p2, void *p3) {
-  struct zsock_pollfd fds[5];
-  int sockets[5];
-  size_t len = 0;
-  size_t i;
-  int ret;
-  struct gb_operation *op, *op_safe;
-  struct gb_message *msg;
+      k_yield();
 
-  while (1) {
-    len = node_table_get_all_cports(sockets, 5);
-
-    for (i = 0; i < len; ++i) {
-      fds[i].fd = sockets[i];
-      fds[i].events = ZSOCK_POLLIN;
-    }
-
-    ret = zsock_poll(fds, len, 100);
-    if (ret > 0) {
       // Read any available responses
       for (i = 0; i < len; ++i) {
         if (fds[i].revents & ZSOCK_POLLIN) {
@@ -125,7 +106,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
           if (msg != NULL) {
             // Handle if the msg is a response to an operation
             if (is_message_response(msg)) {
-              k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
               SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
                                                 op_safe, node) {
                 if (msg->header.id == op->operation_id) {
@@ -134,7 +114,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
                   greybus_dealloc_operation(op);
                 }
               }
-              k_mutex_unlock(&greybus_operations_mutex);
             } else {
               // Handle if the msg it the request from node.
             }
@@ -142,7 +121,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
         }
       }
     }
-    k_yield();
   }
 }
 
@@ -220,9 +198,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     }
     LOG_DBG("Added Cport0");
 
-    k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
     ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
-    k_mutex_unlock(&greybus_operations_mutex);
   }
 }
 

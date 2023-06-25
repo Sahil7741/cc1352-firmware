@@ -7,14 +7,14 @@
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-struct greybus_node {
+struct node_table_item {
   struct in6_addr addr;
   int cport0;
   size_t num_cports; /* Number of cports. This does not include Cport0 */
   int *cports;
 };
 
-static struct greybus_node nodes_table[MAX_NODE_TABLE_LEN];
+static struct node_table_item nodes_table[MAX_NODE_TABLE_LEN];
 static size_t nodes_pos = 0;
 
 static int sock_addr_cmp_addr(const struct in6_addr *sa,
@@ -40,7 +40,7 @@ static int find_node_by_cport0(const int cport0) {
   return -1;
 }
 
-static void deinit_node(struct greybus_node *node) {
+static void deinit_node(struct node_table_item *node) {
   size_t i;
   // Close all the sockets
   if (node->cport0 >= 0) {
@@ -60,7 +60,7 @@ static void remove_node_by_pos(const size_t pos) {
   nodes_pos--;
   if (pos != nodes_pos) {
     memcpy(&nodes_table[pos], &nodes_table[nodes_pos],
-           sizeof(struct greybus_node));
+           sizeof(struct node_table_item));
   }
 }
 
