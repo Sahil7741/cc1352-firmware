@@ -38,22 +38,23 @@ K_MUTEX_DEFINE(operations_queue_mutex);
 
 void node_discovery_entry(void *, void *, void *);
 void node_setup_entry(void *, void *, void *);
-void node_manager_entry(void *, void *, void *);
+void node_reader_entry(void *, void *, void *);
+void node_writer_entry(void *, void *, void *);
 
 // Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
 // Thread responsible for reading from greybus nodes
-K_THREAD_DEFINE(node_manager, 2048, node_manager_entry, NULL, NULL, NULL, 5, 0,
+K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5, 0,
+                0);
+// Thread responsible for writing to greybus nodes
+K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5, 0,
                 0);
 // Thread responsible for setting up a newly discovered node
 K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
-void node_manager_entry(void *p1, void *p2, void *p3) {
-  LOG_DBG("Starting Node Manager Thread");
-
+void node_reader_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[5];
-  int sockets[5];
   size_t len = 0;
   size_t i;
   int ret;
@@ -62,13 +63,61 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
-    len = node_table_get_all_cports(sockets, 5);
+    len = node_table_get_all_cports_pollfd(fds, 5);
     k_mutex_unlock(&nodes_table_mutex);
     LOG_DBG("Polling %u sockets", len);
 
     for (i = 0; i < len; ++i) {
-      fds[i].fd = sockets[i];
-      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
+      fds[i].events = ZSOCK_POLLIN;
+    }
+
+    ret = zsock_poll(fds, len, 500);
+    if (ret > 0) {
+      // Read any available responses
+      for (i = 0; i < len; ++i) {
+        if (fds[i].revents & ZSOCK_POLLIN) {
+          msg = greybus_recieve_message(fds[i].fd);
+          if (msg != NULL) {
+            // Handle if the msg is a response to an operation
+            if (is_message_response(msg)) {
+              k_mutex_lock(&operations_queue_mutex, K_FOREVER);
+              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
+                                                op_safe, node) {
+                if (msg->header.id == op->operation_id) {
+                  op->response = msg;
+                  LOG_DBG("Operation with ID %u completed", msg->header.id);
+                  greybus_dealloc_operation(op);
+                }
+              }
+              k_mutex_unlock(&operations_queue_mutex);
+            } else {
+              // Handle if the msg it the request from node.
+            }
+          }
+        }
+      }
+    }
+
+    // Not sure why this is needed.
+    k_sleep(K_MSEC(500));
+  }
+}
+
+void node_writer_entry(void *p1, void *p2, void *p3) {
+  struct zsock_pollfd fds[5];
+  size_t len = 0;
+  size_t i;
+  int ret;
+  struct gb_operation *op, *op_safe;
+
+  while (1) {
+    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
+    len = node_table_get_all_cports_pollfd(fds, 5);
+    k_mutex_unlock(&nodes_table_mutex);
+    LOG_DBG("Polling %u sockets", len);
+
+    for (i = 0; i < len; ++i) {
+      fds[i].events = ZSOCK_POLLOUT;
     }
 
     ret = zsock_poll(fds, len, 500);
@@ -97,34 +146,10 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
         }
       }
       k_mutex_unlock(&operations_queue_mutex);
-
-      // Read any available responses
-      for (i = 0; i < len; ++i) {
-        if (fds[i].revents & ZSOCK_POLLIN) {
-          msg = greybus_recieve_message(fds[i].fd);
-          if (msg != NULL) {
-            // Handle if the msg is a response to an operation
-            if (is_message_response(msg)) {
-              k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
-                                                op_safe, node) {
-                if (msg->header.id == op->operation_id) {
-                  op->response = msg;
-                  LOG_DBG("Operation with ID %u completed", msg->header.id);
-                  greybus_dealloc_operation(op);
-                }
-              }
-              k_mutex_unlock(&operations_queue_mutex);
-            } else {
-              // Handle if the msg it the request from node.
-            }
-          }
-        }
-      }
     }
 
     // Not sure why this is needed.
-    k_sleep(K_MSEC(1000));
+    k_sleep(K_MSEC(500));
   }
 }
 

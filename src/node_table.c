@@ -218,3 +218,24 @@ size_t node_table_get_all_cports(int *arr, size_t arr_len) {
 
   return count;
 }
+
+size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *arr, size_t arr_len) {
+  size_t i, j;
+  size_t count = 0;
+
+  for(i = 0; i < nodes_pos && count < arr_len; ++i) {
+    if (nodes_table[i].cport0 >= 0) {
+      arr[count].fd = nodes_table[i].cport0;
+      count++;
+    }
+
+    for(j = 0; j < nodes_table[i].num_cports && count < arr_len; ++j) {
+      if (nodes_table[i].cports[j] >= 0) {
+        arr[count].fd = nodes_table[i].cports[j];
+        count++;
+      }
+    }
+  }
+
+  return count;
+}

@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <zephyr/net/net_ip.h>
+#include <zephyr/net/socket.h>
 
 #define MAX_NODE_TABLE_LEN CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 
@@ -86,5 +87,10 @@ bool node_table_remove_cport_by_socket(int);
  * @returns the number of cports writte.
  */
 size_t node_table_get_all_cports(int *, size_t);
+
+/*
+ * Get pollfd for all cports
+ */
+size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *, size_t);
 
 #endif
