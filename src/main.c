@@ -32,10 +32,7 @@ static sys_dlist_t greybus_operations_list =
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
-K_MSGQ_DEFINE(node_writer_msgq, sizeof(int), 10, 4);
-K_MSGQ_DEFINE(node_reader_msgq, sizeof(int), 10, 4);
 
-K_MUTEX_DEFINE(greybus_nodes_mutex);
 K_MUTEX_DEFINE(greybus_operations_mutex);
 
 void node_discovery_entry(void *, void *, void *);
@@ -57,17 +54,17 @@ K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
 void node_writer_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[5];
+  int sockets[5];
   size_t len = 0;
   size_t i;
   int ret;
   struct gb_operation *op, *op_safe;
 
   while (1) {
-    if (k_msgq_get(&node_writer_msgq, &fds[len], K_MSEC(100)) == 0) {
-      len++;
-    }
+    len = node_table_get_all_cports(sockets, 5);
 
     for (i = 0; i < len; ++i) {
+      fds[i].fd = sockets[i];
       fds[i].events = ZSOCK_POLLOUT;
     }
 
@@ -104,6 +101,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
 
 void node_reader_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[5];
+  int sockets[5];
   size_t len = 0;
   size_t i;
   int ret;
@@ -111,12 +109,11 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   struct gb_message *msg;
 
   while (1) {
-    if (k_msgq_get(&node_reader_msgq, &fds[len], K_MSEC(100)) == 0) {
-      len++;
-    }
+    len = node_table_get_all_cports(sockets, 5);
 
     for (i = 0; i < len; ++i) {
-      fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLHUP;
+      fds[i].fd = sockets[i];
+      fds[i].events = ZSOCK_POLLIN;
     }
 
     ret = zsock_poll(fds, len, 100);
@@ -163,21 +160,23 @@ static int connect_to_node(const struct sockaddr *addr) {
 
   if (sock < 0) {
     LOG_WRN("Failed to create socket %d", errno);
-    return -1;
+    goto fail;
   }
 
   LOG_INF("Trying to connect to node from socket %d", sock);
-
   ret = zsock_connect(sock, addr, addr_size);
 
   if (ret) {
     LOG_WRN("Failed to connect to node %d", errno);
-    zsock_close(sock);
-    return -1;
+    goto fail;
   }
 
   LOG_INF("Connected to Greybus Node");
   return sock;
+
+fail:
+  zsock_close(sock);
+  return -1;
 }
 
 // This function probes for all greybus nodes.
@@ -198,6 +197,7 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
 void node_setup_entry(void *p1, void *p2, void *p3) {
   struct sockaddr_in6 node_addr;
   int ret;
+  bool temp;
 
   while (k_msgq_get(&discovered_node_msgq, &node_addr.sin6_addr, K_FOREVER) ==
          0) {
@@ -208,22 +208,21 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     ret = connect_to_node((struct sockaddr *)&node_addr);
     if (ret < 0) {
       LOG_WRN("Failed to connect to node");
-      k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-      node_table_remove_node(&node_addr.sin6_addr);
-      k_mutex_unlock(&greybus_nodes_mutex);
+      node_table_remove_node_by_addr(&node_addr.sin6_addr);
       continue;
     }
 
-    k_msgq_put(&node_reader_msgq, &ret, K_FOREVER);
-    k_msgq_put(&node_writer_msgq, &ret, K_FOREVER);
+    temp = node_table_add_cport0(&node_addr.sin6_addr, ret);
+    if (!temp) {
+      LOG_WRN("Failed to add cport0 to node table");
+      node_table_remove_node_by_addr(&node_addr.sin6_addr);
+      continue;
+    }
+    LOG_DBG("Added Cport0");
 
     k_mutex_lock(&greybus_operations_mutex, K_FOREVER);
-    ret = svc_send_ping(ret, &greybus_operations_list);
     ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
     k_mutex_unlock(&greybus_operations_mutex);
-    if (!ret) {
-      LOG_DBG("Sent svc protocol version request");
-    }
   }
 }
 
@@ -240,16 +239,14 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
     LOG_INF("Discoverd %u nodes", ret);
 
     for (size_t i = 0; i < ret; ++i) {
-      k_mutex_lock(&greybus_nodes_mutex, K_FOREVER);
-      if (!node_table_is_active(&node_array[i])) {
-        if (!node_table_add_node(&node_array[i])) {
-          LOG_WRN("Failed to add node");
-        } else {
+      if (!node_table_is_active_by_addr(&node_array[i])) {
+        if (node_table_add_node(&node_array[i])) {
           LOG_INF("Added Greybus Node");
           k_msgq_put(&discovered_node_msgq, &node_array[i], K_FOREVER);
+        } else {
+          LOG_WRN("Failed to add node");
         }
       }
-      k_mutex_unlock(&greybus_nodes_mutex);
     }
 
     // Put the thread to sleep for an interval
