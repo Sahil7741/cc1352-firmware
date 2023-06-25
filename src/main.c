@@ -33,6 +33,9 @@ static sys_dlist_t greybus_operations_list =
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
+K_MUTEX_DEFINE(nodes_table_mutex);
+K_MUTEX_DEFINE(operations_queue_mutex);
+
 void node_discovery_entry(void *, void *, void *);
 void node_setup_entry(void *, void *, void *);
 void node_manager_entry(void *, void *, void *);
@@ -56,11 +59,11 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
   int ret;
   struct gb_operation *op, *op_safe;
   struct gb_message *msg;
-  char tx;
 
   while (1) {
-    LOG_DBG("Get all cports");
+    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     len = node_table_get_all_cports(sockets, 5);
+    k_mutex_unlock(&nodes_table_mutex);
     LOG_DBG("Polling %u sockets", len);
 
     for (i = 0; i < len; ++i) {
@@ -68,13 +71,10 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
       fds[i].events = ZSOCK_POLLIN | ZSOCK_POLLOUT;
     }
 
-    LOG_DBG("Poll Sockets");
-
-    k_sleep(K_MSEC(5000));
-
-    ret = zsock_poll(fds, len, 100);
+    ret = zsock_poll(fds, len, 500);
     if (ret > 0) {
       /// Send all pending requests
+      k_mutex_lock(&operations_queue_mutex, K_FOREVER);
       SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
                                         node) {
         if (!op->request_sent) {
@@ -96,8 +96,7 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
           }
         }
       }
-
-      k_yield();
+      k_mutex_unlock(&operations_queue_mutex);
 
       // Read any available responses
       for (i = 0; i < len; ++i) {
@@ -106,6 +105,7 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
           if (msg != NULL) {
             // Handle if the msg is a response to an operation
             if (is_message_response(msg)) {
+              k_mutex_lock(&operations_queue_mutex, K_FOREVER);
               SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op,
                                                 op_safe, node) {
                 if (msg->header.id == op->operation_id) {
@@ -114,6 +114,7 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
                   greybus_dealloc_operation(op);
                 }
               }
+              k_mutex_unlock(&operations_queue_mutex);
             } else {
               // Handle if the msg it the request from node.
             }
@@ -121,6 +122,9 @@ void node_manager_entry(void *p1, void *p2, void *p3) {
         }
       }
     }
+
+    // Not sure why this is needed.
+    k_sleep(K_MSEC(1000));
   }
 }
 
@@ -186,19 +190,31 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     ret = connect_to_node((struct sockaddr *)&node_addr);
     if (ret < 0) {
       LOG_WRN("Failed to connect to node");
-      node_table_remove_node_by_addr(&node_addr.sin6_addr);
-      continue;
+      goto fail;
     }
 
+    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     temp = node_table_add_cport0(&node_addr.sin6_addr, ret);
+    k_mutex_unlock(&nodes_table_mutex);
     if (!temp) {
       LOG_WRN("Failed to add cport0 to node table");
-      node_table_remove_node_by_addr(&node_addr.sin6_addr);
-      continue;
+      goto fail;
     }
     LOG_DBG("Added Cport0");
 
+    k_mutex_lock(&operations_queue_mutex, K_FOREVER);
     ret = svc_send_protocol_version_request(ret, &greybus_operations_list);
+    k_mutex_unlock(&operations_queue_mutex);
+    if (ret >= 0) {
+      LOG_DBG("Sent dbg request");
+    }
+
+    continue;
+
+  fail:
+    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
+    node_table_remove_node_by_addr(&node_addr.sin6_addr);
+    k_mutex_unlock(&nodes_table_mutex);
   }
 }
 
@@ -215,6 +231,7 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
     LOG_INF("Discoverd %u nodes", ret);
 
     for (size_t i = 0; i < ret; ++i) {
+      k_mutex_lock(&nodes_table_mutex, K_FOREVER);
       if (!node_table_is_active_by_addr(&node_array[i])) {
         if (node_table_add_node(&node_array[i])) {
           LOG_INF("Added Greybus Node");
@@ -223,6 +240,7 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
           LOG_WRN("Failed to add node");
         }
       }
+      k_mutex_unlock(&nodes_table_mutex);
     }
 
     // Put the thread to sleep for an interval
