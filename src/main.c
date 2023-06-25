@@ -22,6 +22,10 @@
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
+#define MAX_NUMBER_OF_SOCKETS CONFIG_NET_SOCKETS_POLL_MAX
+#define NODE_READER_INTERVAL 500
+#define NODE_WRITER_INTERVAL 500
+#define NODE_POLL_TIMEOUT 500
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -54,7 +58,7 @@ K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5, 0,
 K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
 void node_reader_entry(void *p1, void *p2, void *p3) {
-  struct zsock_pollfd fds[5];
+  struct zsock_pollfd fds[MAX_NUMBER_OF_SOCKETS];
   size_t len = 0;
   size_t i;
   int ret;
@@ -63,7 +67,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
-    len = node_table_get_all_cports_pollfd(fds, 5);
+    len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
     k_mutex_unlock(&nodes_table_mutex);
     LOG_DBG("Polling %u sockets", len);
 
@@ -71,7 +75,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
       fds[i].events = ZSOCK_POLLIN;
     }
 
-    ret = zsock_poll(fds, len, 500);
+    ret = zsock_poll(fds, len, NODE_POLL_TIMEOUT);
     if (ret > 0) {
       // Read any available responses
       for (i = 0; i < len; ++i) {
@@ -99,12 +103,12 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
     }
 
     // Not sure why this is needed.
-    k_sleep(K_MSEC(500));
+    k_sleep(K_MSEC(NODE_READER_INTERVAL));
   }
 }
 
 void node_writer_entry(void *p1, void *p2, void *p3) {
-  struct zsock_pollfd fds[5];
+  struct zsock_pollfd fds[MAX_NUMBER_OF_SOCKETS];
   size_t len = 0;
   size_t i;
   int ret;
@@ -112,7 +116,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
-    len = node_table_get_all_cports_pollfd(fds, 5);
+    len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
     k_mutex_unlock(&nodes_table_mutex);
     LOG_DBG("Polling %u sockets", len);
 
@@ -120,7 +124,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
       fds[i].events = ZSOCK_POLLOUT;
     }
 
-    ret = zsock_poll(fds, len, 500);
+    ret = zsock_poll(fds, len, NODE_POLL_TIMEOUT);
     if (ret > 0) {
       /// Send all pending requests
       k_mutex_lock(&operations_queue_mutex, K_FOREVER);
@@ -149,7 +153,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     }
 
     // Not sure why this is needed.
-    k_sleep(K_MSEC(500));
+    k_sleep(K_MSEC(NODE_WRITER_INTERVAL));
   }
 }
 

@@ -1,5 +1,6 @@
 /*
  * This file is ment to hold functions to maintain a table of active nodes.
+ * THe functions defined here are not thread safe.
  */
 
 #ifndef NODE_TABLE_H
@@ -84,12 +85,17 @@ bool node_table_remove_cport_by_socket(int);
  * @param array: array to copy cports to.
  * @param array_len: length of array.
  *
- * @returns the number of cports writte.
+ * @returns the number of cports write.
  */
 size_t node_table_get_all_cports(int *, size_t);
 
 /*
  * Get pollfd for all cports
+ *
+ * @param array: pollfd array to copy cports to.
+ * @param array_len: length of array.
+ *
+ * @returns the number of cports write.
  */
 size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *, size_t);
 
