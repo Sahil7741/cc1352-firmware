@@ -193,4 +193,20 @@ void gb_operation_finish(struct gb_operation *);
  */
 int gb_operation_send_request(struct gb_operation *);
 
+/*
+ * Find the greybus operation by operation_id.
+ *
+ * @param operation id
+ *
+ * @return greybus operation if found, else return NULL.
+ */
+struct gb_operation *gb_operation_find_by_id(uint16_t);
+
+/*
+ * Deallocate a greybus message.
+ *
+ * @param pointer to the message to deallcate
+ */
+void gb_message_dealloc(struct gb_message *);
+
 #endif

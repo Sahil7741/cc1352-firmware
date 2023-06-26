@@ -39,15 +39,6 @@ static int read_data(int sock, void *data, size_t len) {
   return recieved;
 }
 
-static void greybus_dealloc_message(struct gb_message *msg) {
-  if (msg == NULL) {
-    return;
-  }
-
-  k_free(msg->payload);
-  k_free(msg);
-}
-
 struct gb_operation *gb_operation_alloc(int sock, bool is_oneshot) {
   struct gb_operation *op = k_malloc(sizeof(struct gb_operation));
   if (!op) {
@@ -82,8 +73,8 @@ void gb_operation_dealloc(struct gb_operation *op) {
     return;
   }
 
-  greybus_dealloc_message(op->request);
-  greybus_dealloc_message(op->response);
+  gb_message_dealloc(op->request);
+  gb_message_dealloc(op->response);
 
   sys_dlist_remove(&op->node);
 
@@ -195,4 +186,25 @@ int gb_operation_send_request(struct gb_operation *op) {
   }
 
   return SUCCESS;
+}
+
+struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
+  struct gb_operation *op;
+
+  SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
+    if (op->operation_id == operation_id) {
+      return op;
+    }
+  }
+
+  return NULL;
+}
+
+void gb_message_dealloc(struct gb_message *msg) {
+  if (msg == NULL) {
+    return;
+  }
+
+  k_free(msg->payload);
+  k_free(msg);
 }

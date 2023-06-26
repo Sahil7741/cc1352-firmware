@@ -60,13 +60,18 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct gb_operation *op, *op_safe;
+  struct gb_operation *op;
   struct gb_message *msg;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
     k_mutex_unlock(&nodes_table_mutex);
+
+    if (len <= 0) {
+      goto sleep_label;
+    }
+
     LOG_DBG("Polling %u sockets", len);
 
     for (i = 0; i < len; ++i) {
@@ -74,34 +79,41 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
     }
 
     ret = zsock_poll(fds, len, NODE_POLL_TIMEOUT);
-    if (ret > 0) {
-      // Read any available responses
-      for (i = 0; i < len; ++i) {
-        if (fds[i].revents & ZSOCK_POLLIN) {
-          msg = gb_message_receive(fds[i].fd);
-          if (msg != NULL) {
-            // Handle if the msg is a response to an operation
-            if (gb_message_is_response(msg)) {
-              k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(), op,
-                                                op_safe, node) {
-                if (msg->header.id == op->operation_id) {
-                  op->response = msg;
-                  LOG_DBG("Operation with ID %u completed", msg->header.id);
-                  gb_operation_finish(op);
-                }
-              }
-              k_mutex_unlock(&operations_queue_mutex);
-            } else {
-              // Handle if the msg it the request from node.
-            }
+    if (ret <= 0) {
+      goto sleep_label;
+    }
+
+    // Read any available responses
+    for (i = 0; i < len; ++i) {
+      if (fds[i].revents & ZSOCK_POLLIN) {
+        msg = gb_message_receive(fds[i].fd);
+        if (msg == NULL) {
+          continue;
+        }
+
+        // Handle if the msg is a response to an operation
+        if (gb_message_is_response(msg)) {
+          k_mutex_lock(&operations_queue_mutex, K_FOREVER);
+          op = gb_operation_find_by_id(msg->header.id);
+          if (op == NULL) {
+            LOG_DBG("Orphan response");
+            gb_message_dealloc(msg);
+          } else {
+            op->response = msg;
+            LOG_DBG("Operation with ID %u completed", msg->header.id);
+            gb_operation_finish(op);
           }
+          k_mutex_unlock(&operations_queue_mutex);
+        } else {
+          // Handle if the msg it the request from node.
+          gb_message_dealloc(msg);
         }
       }
     }
 
+  sleep_label:
     // Not sure why this is needed.
-    k_sleep(K_MSEC(NODE_READER_INTERVAL));
+    k_sleep(K_MSEC(NODE_WRITER_INTERVAL));
   }
 }
 
@@ -145,9 +157,9 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
             fds[i].revents & ZSOCK_POLLOUT) {
           ret = gb_operation_send_request(op);
           if (ret == 0) {
-            LOG_DBG("Request sent");
+            LOG_DBG("Request %u sent", op->operation_id);
           } else {
-            LOG_DBG("Error in sending request %d", ret);
+            LOG_WRN("Error in sending request %d", ret);
           }
           break;
         }
@@ -155,8 +167,8 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     }
     k_mutex_unlock(&operations_queue_mutex);
 
-    // Not sure why this is needed.
   sleep_label:
+    // Not sure why this is needed.
     k_sleep(K_MSEC(NODE_WRITER_INTERVAL));
   }
 }
