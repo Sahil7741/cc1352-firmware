@@ -9,10 +9,10 @@
 #include "greybus_protocol.h"
 #include <zephyr/sys/dlist.h>
 
-struct greybus_operation;
-struct greybus_message;
+struct gb_operation;
+struct gb_message;
 
-typedef void (*greybus_operation_callback_t)(struct greybus_operation *);
+typedef void (*greybus_operation_callback_t)(struct gb_operation *);
 
 /*
  * Struct to represent greybus message
@@ -23,8 +23,8 @@ typedef void (*greybus_operation_callback_t)(struct greybus_operation *);
  * @param payload: heap allocated payload.
  * @param payload_size: size of payload in bytes
  */
-struct greybus_message {
-  struct greybus_operation *operation;
+struct gb_message {
+  struct gb_operation *operation;
   struct gb_operation_msg_hdr header;
   void *payload;
   size_t payload_size;
@@ -41,12 +41,12 @@ struct greybus_message {
  * @param callback: callback function called when operation is completed.
  * @param node: operation dlist node.
  */
-struct greybus_operation {
+struct gb_operation {
   int sock;
   uint16_t operation_id;
   bool request_sent;
-  struct greybus_message *request;
-  struct greybus_message *response;
+  struct gb_message *request;
+  struct gb_message *response;
   greybus_operation_callback_t callback;
   sys_dnode_t node;
 };
@@ -61,7 +61,7 @@ struct greybus_operation {
  * @return true if operation is unidirectional, else false.
  */
 static inline bool
-greybus_operation_is_unidirectional(struct greybus_operation *op) {
+gb_operation_is_unidirectional(struct gb_operation *op) {
   return op->operation_id == 0;
 }
 
@@ -72,7 +72,7 @@ greybus_operation_is_unidirectional(struct greybus_operation *op) {
  *
  * @return true if message is response, else false.
  */
-static inline bool greybus_message_is_response(struct greybus_message *msg) {
+static inline bool gb_message_is_response(struct gb_message *msg) {
   return msg->header.type & GB_TYPE_RESPONSE_FLAG;
 }
 
@@ -86,7 +86,7 @@ static inline bool greybus_message_is_response(struct greybus_message *msg) {
  *
  * @return heap allocated gb_operation
  */
-struct greybus_operation *greybus_operation_alloc(int, bool);
+struct gb_operation *gb_operation_alloc(int, bool);
 
 /*
  * Allocate a request on a pre-allocated greybus operation
@@ -99,7 +99,7 @@ struct greybus_operation *greybus_operation_alloc(int, bool);
  *
  * @return 0 on success, else error
  */
-int greybus_operation_request_alloc(struct greybus_operation *, const void *,
+int gb_operation_request_alloc(struct gb_operation *, const void *,
                                     size_t, uint8_t,
                                     greybus_operation_callback_t);
 
@@ -111,7 +111,7 @@ int greybus_operation_request_alloc(struct greybus_operation *, const void *,
  *
  * @param op: greybus operation to deallocate
  */
-void greybus_operation_dealloc(struct greybus_operation *);
+void gb_operation_dealloc(struct gb_operation *);
 
 /*
  * Queue an operation to be executed.
@@ -120,7 +120,7 @@ void greybus_operation_dealloc(struct greybus_operation *);
  *
  * @param op: greybus operation to execute
  */
-void greybus_operation_queue(struct greybus_operation *);
+void gb_operation_queue(struct gb_operation *);
 
 /*
  * Send a greybus message. This only works for messages associated with a
@@ -128,7 +128,7 @@ void greybus_operation_queue(struct greybus_operation *);
  *
  * @param msg: greybus message to send.
  */
-int greybus_message_send(const struct greybus_message *);
+int gb_message_send(const struct gb_message *);
 
 /*
  * Receive a greybus message over a socket.
@@ -137,7 +137,7 @@ int greybus_message_send(const struct greybus_message *);
  *
  * @return a heap allocated greybus message
  */
-struct greybus_message *greybus_message_receive(int);
+struct gb_message *gb_message_receive(int);
 
 /*
  * Get the greybus operation queue. This use useful for enumerating over the
@@ -145,7 +145,7 @@ struct greybus_message *greybus_message_receive(int);
  *
  * @return greybus operation queue
  */
-sys_dlist_t *greybus_operation_queue_get();
+sys_dlist_t *gb_operation_queue_get();
 
 /*
  * Mark a greybus operation as complete. Call the callback and deallocate the
@@ -153,6 +153,6 @@ sys_dlist_t *greybus_operation_queue_get();
  *
  * @param op: greybus operation.
  */
-void greybus_operation_finish(struct greybus_operation *);
+void gb_operation_finish(struct gb_operation *);
 
 #endif

@@ -60,8 +60,8 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct greybus_operation *op, *op_safe;
-  struct greybus_message *msg;
+  struct gb_operation *op, *op_safe;
+  struct gb_message *msg;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -78,17 +78,17 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
       // Read any available responses
       for (i = 0; i < len; ++i) {
         if (fds[i].revents & ZSOCK_POLLIN) {
-          msg = greybus_message_receive(fds[i].fd);
+          msg = gb_message_receive(fds[i].fd);
           if (msg != NULL) {
             // Handle if the msg is a response to an operation
-            if (greybus_message_is_response(msg)) {
+            if (gb_message_is_response(msg)) {
               k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(greybus_operation_queue_get(),
+              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(),
                                                 op, op_safe, node) {
                 if (msg->header.id == op->operation_id) {
                   op->response = msg;
                   LOG_DBG("Operation with ID %u completed", msg->header.id);
-                  greybus_operation_finish(op);
+                  gb_operation_finish(op);
                 }
               }
               k_mutex_unlock(&operations_queue_mutex);
@@ -110,7 +110,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct greybus_operation *op, *op_safe;
+  struct gb_operation *op, *op_safe;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -126,12 +126,12 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     if (ret > 0) {
       /// Send all pending requests
       k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-      SYS_DLIST_FOR_EACH_CONTAINER_SAFE(greybus_operation_queue_get(), op,
+      SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(), op,
                                         op_safe, node) {
         if (!op->request_sent) {
           for (i = 0; i < len; ++i) {
             if (op->sock == fds[i].fd && fds[i].revents & ZSOCK_POLLOUT) {
-              ret = greybus_message_send(op->request);
+              ret = gb_message_send(op->request);
               if (ret == 0) {
                 LOG_DBG("Request sent");
                 op->request_sent = true;
@@ -140,8 +140,8 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
 
               // Deallocate operation if it is unidirectional since there will
               // be no response.
-              if (greybus_operation_is_unidirectional(op)) {
-                greybus_operation_finish(op);
+              if (gb_operation_is_unidirectional(op)) {
+                gb_operation_finish(op);
               }
             }
           }
