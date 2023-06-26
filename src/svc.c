@@ -12,7 +12,7 @@ int svc_send_ping(int sock) {
     return -1;
   }
 
-  ret = greybus_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_PROTOCOL_VERSION);
+  ret = greybus_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_PROTOCOL_VERSION, NULL);
   if(ret != 0) {
     return -1;
   }

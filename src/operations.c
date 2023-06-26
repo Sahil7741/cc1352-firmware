@@ -57,6 +57,7 @@ struct greybus_operation *greybus_operation_alloc(int sock, bool is_oneshot) {
   op->response = NULL;
   op->request = NULL;
   op->request_sent = false;
+  op->callback = NULL;
 
   if (is_oneshot) {
     op->operation_id = 0;
@@ -134,7 +135,7 @@ struct greybus_message *greybus_message_receive(int sock) {
 }
 
 int greybus_operation_request_alloc(struct greybus_operation *op, const void *payload,
-                          size_t payload_len, uint8_t request_type) {
+                          size_t payload_len, uint8_t request_type, greybus_operation_callback_t callback) {
   op->request = k_malloc(sizeof(struct greybus_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
@@ -156,10 +157,19 @@ int greybus_operation_request_alloc(struct greybus_operation *op, const void *pa
   op->request->payload_size = payload_len;
 
   op->request->operation = op;
+  op->callback = callback;
 
   return 0;
 }
 
 sys_dlist_t *greybus_operation_queue_get() {
   return &greybus_operations_list;
+}
+
+void greybus_operation_finish(struct greybus_operation *op) {
+  if (op->callback != NULL) {
+    op->callback(op);
+  }
+
+  greybus_operation_dealloc(op);
 }

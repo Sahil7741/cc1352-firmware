@@ -9,6 +9,20 @@
 #include "greybus_protocol.h"
 #include <zephyr/sys/dlist.h>
 
+struct greybus_operation;
+struct greybus_message;
+
+typedef void (*greybus_operation_callback_t)(struct greybus_operation *);
+
+/*
+ * Struct to represent greybus message
+ *
+ * @param operation: greybus operation this message is associated with. Can be
+ * NULL in case of message received.
+ * @param header: greybus msg header.
+ * @param payload: heap allocated payload.
+ * @param payload_size: size of payload in bytes
+ */
 struct greybus_message {
   struct greybus_operation *operation;
   struct gb_operation_msg_hdr header;
@@ -16,12 +30,24 @@ struct greybus_message {
   size_t payload_size;
 };
 
+/*
+ * Struct to represent a greybus operation.
+ *
+ * @param sock: socket to perform this operation on.
+ * @param operation_id: the unique id for this operation.
+ * @param request_sent: flag to check if the request has been sent.
+ * @param request: pointer to greybus request message.
+ * @param response: pointer to greybus response message.
+ * @param callback: callback function called when operation is completed.
+ * @param node: operation dlist node.
+ */
 struct greybus_operation {
   int sock;
   uint16_t operation_id;
   bool request_sent;
   struct greybus_message *request;
   struct greybus_message *response;
+  greybus_operation_callback_t callback;
   sys_dnode_t node;
 };
 
@@ -69,15 +95,19 @@ struct greybus_operation *greybus_operation_alloc(int, bool);
  * @param data: pointer to payload for request
  * @param payload_len: size of payload
  * @param type: type of greybus operation
+ * @param callback: greybus callback to call on operation completion.
  *
  * @return 0 on success, else error
  */
 int greybus_operation_request_alloc(struct greybus_operation *, const void *,
-                                    size_t, uint8_t);
+                                    size_t, uint8_t,
+                                    greybus_operation_callback_t);
 
 /*
  * Deallocate greybus operation. It recursively deallocates any allocated
  * request and response. It also removes the operation from operation queue.
+ *
+ * Note: you probably want to use greybus_operation_finish instead of this.
  *
  * @param op: greybus operation to deallocate
  */
@@ -116,5 +146,13 @@ struct greybus_message *greybus_message_receive(int);
  * @return greybus operation queue
  */
 sys_dlist_t *greybus_operation_queue_get();
+
+/*
+ * Mark a greybus operation as complete. Call the callback and deallocate the
+ * resources.
+ *
+ * @param op: greybus operation.
+ */
+void greybus_operation_finish(struct greybus_operation *);
 
 #endif

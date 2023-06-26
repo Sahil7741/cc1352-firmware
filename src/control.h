@@ -16,4 +16,6 @@
  */
 int control_send_protocol_version_request(int);
 
+int control_send_get_manifest_size_request(int);
+
 #endif
