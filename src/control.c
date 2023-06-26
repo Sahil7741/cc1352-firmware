@@ -15,7 +15,13 @@ struct gb_control_get_manifest_size_response {
   uint16_t manifest_size;
 } __packed;
 
+struct gb_control_get_manifest_response {
+  uint8_t *data;
+} __packed;
+
 static void gb_control_get_manifest_size_callback(struct greybus_operation *op) {
+  int ret;
+
   if (op->response == NULL) {
     LOG_DBG("Null Response");
     return;
@@ -23,6 +29,21 @@ static void gb_control_get_manifest_size_callback(struct greybus_operation *op) 
 
   struct gb_control_get_manifest_size_response *response = op->response->payload;
   LOG_DBG("Manifest Size: %u bytes", response->manifest_size);
+
+  ret = control_send_get_manifest_request(op->sock);
+  if (ret >= 0) {
+    LOG_DBG("Sent control get manifest request");
+  }
+}
+
+static void gb_control_get_manifest_callback(struct greybus_operation *op) {
+  if (op->response == NULL) {
+    LOG_DBG("Null Response");
+    return;
+  }
+  
+  struct gb_control_get_manifest_response *response = op->response->payload;
+  LOG_DBG("Manifest Size Response header size %u", op->response->header.size);
 }
 
 int control_send_protocol_version_request(int sock) {
@@ -55,6 +76,23 @@ int control_send_get_manifest_size_request(int sock) {
   }
 
   ret = greybus_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST_SIZE, gb_control_get_manifest_size_callback);
+  if(ret != 0) {
+    return -1;
+  }
+
+  greybus_operation_queue(op);
+
+  return 0;
+}
+
+int control_send_get_manifest_request(int sock) {
+  int ret;
+  struct greybus_operation *op = greybus_operation_alloc(sock, false);
+  if (op == NULL) {
+    return -1;
+  }
+
+  ret = greybus_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST, gb_control_get_manifest_callback);
   if(ret != 0) {
     return -1;
   }
