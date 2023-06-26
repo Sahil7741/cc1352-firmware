@@ -4,10 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "node_table.h"
-#include "operations.h"
-#include "svc.h"
-#include "zephyr/sys/dlist.h"
 #include <stdbool.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
@@ -17,6 +13,11 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/dlist.h>
+#include "node_table.h"
+#include "operations.h"
+#include "svc.h"
+#include "control.h"
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
@@ -229,7 +230,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     LOG_DBG("Added Cport0");
 
     k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-    ret = svc_send_protocol_version_request(ret);
+    ret = control_send_protocol_version_request(ret);
     k_mutex_unlock(&operations_queue_mutex);
     if (ret >= 0) {
       LOG_DBG("Sent dbg request");
