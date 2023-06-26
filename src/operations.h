@@ -9,6 +9,11 @@
 #include "greybus_protocol.h"
 #include <zephyr/sys/dlist.h>
 
+/* Return codes for the functions defined here */
+#define SUCCESS 0
+#define E_NULL_REQUEST 1
+#define E_ALREADY_SENT 2
+
 struct gb_operation;
 struct gb_message;
 
@@ -61,7 +66,7 @@ struct gb_operation {
  * @return true if operation is unidirectional, else false.
  */
 static inline bool
-gb_operation_is_unidirectional(struct gb_operation *op) {
+gb_operation_is_unidirectional(const struct gb_operation *op) {
   return op->operation_id == 0;
 }
 
@@ -72,8 +77,30 @@ gb_operation_is_unidirectional(struct gb_operation *op) {
  *
  * @return true if message is response, else false.
  */
-static inline bool gb_message_is_response(struct gb_message *msg) {
+static inline bool gb_message_is_response(const struct gb_message *msg) {
   return msg->header.type & GB_TYPE_RESPONSE_FLAG;
+}
+
+/*
+ * Get socket for the operation.
+ *
+ * @param op: greybus operation
+ *
+ * @return socket for this operation. -1 if socket has not been allocated yet.
+ */
+static inline int gb_operation_socket(const struct gb_operation *op) {
+  return op->sock;
+}
+
+/*
+ * Check if the request for the operation has been sent.
+ *
+ * @param op: greybus operation
+ *
+ * @return true if already sent, else false.
+ */
+static inline bool gb_operation_request_sent(const struct gb_operation *op) {
+  return op->request_sent;
 }
 
 /*
@@ -99,9 +126,8 @@ struct gb_operation *gb_operation_alloc(int, bool);
  *
  * @return 0 on success, else error
  */
-int gb_operation_request_alloc(struct gb_operation *, const void *,
-                                    size_t, uint8_t,
-                                    greybus_operation_callback_t);
+int gb_operation_request_alloc(struct gb_operation *, const void *, size_t,
+                               uint8_t, greybus_operation_callback_t);
 
 /*
  * Deallocate greybus operation. It recursively deallocates any allocated
@@ -154,5 +180,17 @@ sys_dlist_t *gb_operation_queue_get();
  * @param op: greybus operation.
  */
 void gb_operation_finish(struct gb_operation *);
+
+/*
+ * Send greybus request for this operation. This is just a helper function that
+ * does a bunch of checking internally. If the request has already been sent,
+ * then this does nothing.
+ *
+ * Note: Do not use operation directly after this request. In case of
+ * unidirectional requests, this call will deallocate the request.
+ *
+ * @param op: greybus operation.
+ */
+int gb_operation_send_request(struct gb_operation *);
 
 #endif

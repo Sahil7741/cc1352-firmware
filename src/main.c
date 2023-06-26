@@ -83,8 +83,8 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
             // Handle if the msg is a response to an operation
             if (gb_message_is_response(msg)) {
               k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(),
-                                                op, op_safe, node) {
+              SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(), op,
+                                                op_safe, node) {
                 if (msg->header.id == op->operation_id) {
                   op->response = msg;
                   LOG_DBG("Operation with ID %u completed", msg->header.id);
@@ -116,6 +116,11 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
     k_mutex_unlock(&nodes_table_mutex);
+
+    if (len <= 0) {
+      goto sleep_label;
+    }
+
     LOG_DBG("Polling %u sockets", len);
 
     for (i = 0; i < len; ++i) {
@@ -123,34 +128,35 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     }
 
     ret = zsock_poll(fds, len, NODE_POLL_TIMEOUT);
-    if (ret > 0) {
-      /// Send all pending requests
-      k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-      SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(), op,
-                                        op_safe, node) {
-        if (!op->request_sent) {
-          for (i = 0; i < len; ++i) {
-            if (op->sock == fds[i].fd && fds[i].revents & ZSOCK_POLLOUT) {
-              ret = gb_message_send(op->request);
-              if (ret == 0) {
-                LOG_DBG("Request sent");
-                op->request_sent = true;
-                break;
-              }
-
-              // Deallocate operation if it is unidirectional since there will
-              // be no response.
-              if (gb_operation_is_unidirectional(op)) {
-                gb_operation_finish(op);
-              }
-            }
-          }
-        }
-      }
-      k_mutex_unlock(&operations_queue_mutex);
+    if (ret <= 0) {
+      goto sleep_label;
     }
 
+    /// Send all pending requests
+    k_mutex_lock(&operations_queue_mutex, K_FOREVER);
+    SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(), op, op_safe,
+                                      node) {
+      if (gb_operation_request_sent(op)) {
+        continue;
+      }
+
+      for (i = 0; i < len; ++i) {
+        if (gb_operation_socket(op) == fds[i].fd &&
+            fds[i].revents & ZSOCK_POLLOUT) {
+          ret = gb_operation_send_request(op);
+          if (ret == 0) {
+            LOG_DBG("Request sent");
+          } else {
+            LOG_DBG("Error in sending request %d", ret);
+          }
+          break;
+        }
+      }
+    }
+    k_mutex_unlock(&operations_queue_mutex);
+
     // Not sure why this is needed.
+  sleep_label:
     k_sleep(K_MSEC(NODE_WRITER_INTERVAL));
   }
 }

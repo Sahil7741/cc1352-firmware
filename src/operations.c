@@ -1,4 +1,5 @@
 #include "operations.h"
+#include "greybus_protocol.h"
 #include <limits.h>
 #include <stdint.h>
 #include <zephyr/logging/log.h>
@@ -135,7 +136,8 @@ struct gb_message *gb_message_receive(int sock) {
 }
 
 int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
-                          size_t payload_len, uint8_t request_type, greybus_operation_callback_t callback) {
+                               size_t payload_len, uint8_t request_type,
+                               greybus_operation_callback_t callback) {
   op->request = k_malloc(sizeof(struct gb_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
@@ -162,9 +164,7 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
   return 0;
 }
 
-sys_dlist_t *gb_operation_queue_get() {
-  return &greybus_operations_list;
-}
+sys_dlist_t *gb_operation_queue_get() { return &greybus_operations_list; }
 
 void gb_operation_finish(struct gb_operation *op) {
   if (op->callback != NULL) {
@@ -172,4 +172,27 @@ void gb_operation_finish(struct gb_operation *op) {
   }
 
   gb_operation_dealloc(op);
+}
+
+int gb_operation_send_request(struct gb_operation *op) {
+  if (gb_operation_request_sent(op)) {
+    return -E_ALREADY_SENT;
+  }
+
+  if (op->request == NULL) {
+    return -E_NULL_REQUEST;
+  }
+
+  int ret = gb_message_send(op->request);
+  if (ret < 0) {
+    return ret;
+  }
+
+  op->request_sent = true;
+
+  if (gb_operation_is_unidirectional(op)) {
+    gb_operation_finish(op);
+  }
+
+  return SUCCESS;
 }
