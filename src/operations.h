@@ -7,6 +7,7 @@
 #define OPERATIONS_H
 
 #include "greybus_protocol.h"
+#include <stdbool.h>
 #include <zephyr/sys/dlist.h>
 
 /* Return codes for the functions defined here */
@@ -160,10 +161,11 @@ int gb_message_send(const struct gb_message *);
  * Receive a greybus message over a socket.
  *
  * @param sock: Greybus communication socket.
+ * @param this flag will be set to true if the socket was closed by the peer.
  *
  * @return a heap allocated greybus message
  */
-struct gb_message *gb_message_receive(int);
+struct gb_message *gb_message_receive(int, bool *);
 
 /*
  * Get the greybus operation queue. This use useful for enumerating over the

@@ -62,6 +62,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   int ret;
   struct gb_operation *op;
   struct gb_message *msg;
+  bool peer_closed_flag;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -86,8 +87,14 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
     // Read any available responses
     for (i = 0; i < len; ++i) {
       if (fds[i].revents & ZSOCK_POLLIN) {
-        msg = gb_message_receive(fds[i].fd);
+        msg = gb_message_receive(fds[i].fd, &peer_closed_flag);
         if (msg == NULL) {
+          if(peer_closed_flag) {
+            peer_closed_flag = false;
+            k_mutex_lock(&nodes_table_mutex, K_FOREVER);
+            node_table_remove_cport_by_socket(fds[i].fd);
+            k_mutex_unlock(&nodes_table_mutex);
+          }
           continue;
         }
 

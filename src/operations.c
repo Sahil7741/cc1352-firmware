@@ -33,6 +33,9 @@ static int read_data(int sock, void *data, size_t len) {
     if (ret < 0) {
       LOG_ERR("Failed to recieve data");
       return -1;
+    } else if (ret == 0) {
+      // Socket was closed by peer
+      return 0;
     }
     recieved += ret;
   }
@@ -98,32 +101,45 @@ int gb_message_send(const struct gb_message *msg) {
   return 0;
 }
 
-struct gb_message *gb_message_receive(int sock) {
+struct gb_message *gb_message_receive(int sock, bool *flag) {
+  int ret;
   struct gb_message *msg = k_malloc(sizeof(struct gb_message));
   if (msg == NULL) {
     LOG_ERR("Failed to allocate greybus message");
-    return NULL;
+    goto early_exit;
   }
-  int ret;
 
   ret = read_data(sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
-  if (ret < 0) {
-    return NULL;
+  if (ret <= 0) {
+    *flag = ret == 0;
+    goto free_msg;
+  }
+
+  if (gb_message_is_response(msg) && msg->header.status != GB_OP_SUCCESS) {
+      goto free_msg;
   }
 
   msg->payload_size = msg->header.size - sizeof(struct gb_operation_msg_hdr);
   msg->payload = k_malloc(msg->payload_size);
   if (msg->payload == NULL) {
     LOG_ERR("Failed to allocate message payload");
-    return NULL;
+    goto free_msg;
   }
 
   ret = read_data(sock, msg->payload, msg->payload_size);
-  if (ret < 0) {
-    return NULL;
+  if (ret <= 0) {
+    *flag = ret == 0;
+    goto free_payload;
   }
 
   return msg;
+
+free_payload:
+  k_free(msg->payload);
+free_msg:
+  k_free(msg);
+early_exit:
+  return NULL;
 }
 
 int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
