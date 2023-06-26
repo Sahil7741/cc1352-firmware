@@ -1,14 +1,17 @@
-#include <stdint.h>
 #include "control.h"
 #include "greybus_protocol.h"
+#include "list.h"
+#include "manifest.h"
 #include "operations.h"
+#include "zephyr/sys/slist.h"
+#include <stdint.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct gb_control_version_request {
-	uint8_t major;
-	uint8_t minor;
+  uint8_t major;
+  uint8_t minor;
 } __packed;
 
 struct gb_control_get_manifest_size_response {
@@ -27,7 +30,8 @@ static void gb_control_get_manifest_size_callback(struct gb_operation *op) {
     return;
   }
 
-  struct gb_control_get_manifest_size_response *response = op->response->payload;
+  struct gb_control_get_manifest_size_response *response =
+      op->response->payload;
   LOG_DBG("Manifest Size: %u bytes", response->manifest_size);
 
   ret = control_send_get_manifest_request(op->sock);
@@ -41,9 +45,15 @@ static void gb_control_get_manifest_callback(struct gb_operation *op) {
     LOG_DBG("Null Response");
     return;
   }
-  
-  struct gb_control_get_manifest_response *response = op->response->payload;
-  LOG_DBG("Manifest Size Response header size %u", op->response->header.size);
+
+  sys_slist_t cports = gb_manifest_get_cports(op->response->payload, op->response->payload_size);
+  struct gb_cport *cport;
+
+  SYS_SLIST_FOR_EACH_CONTAINER(&cports, cport, node) {
+    LOG_DBG("CPort: ID %u, Protocol: %u, Bundle: %u", cport->id, cport->protocol, cport->bundle);
+  }
+
+  gb_cports_free(cports);
 }
 
 int control_send_protocol_version_request(int sock) {
@@ -58,8 +68,10 @@ int control_send_protocol_version_request(int sock) {
   req.major = GB_SVC_VERSION_MAJOR;
   req.minor = GB_SVC_VERSION_MINOR;
 
-  ret = gb_operation_request_alloc(op, &req, sizeof(struct gb_control_version_request), GB_CONTROL_TYPE_PROTOCOL_VERSION, NULL);
-  if(ret != 0) {
+  ret = gb_operation_request_alloc(op, &req,
+                                   sizeof(struct gb_control_version_request),
+                                   GB_CONTROL_TYPE_PROTOCOL_VERSION, NULL);
+  if (ret != 0) {
     return -1;
   }
 
@@ -75,8 +87,10 @@ int control_send_get_manifest_size_request(int sock) {
     return -1;
   }
 
-  ret = gb_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST_SIZE, gb_control_get_manifest_size_callback);
-  if(ret != 0) {
+  ret =
+      gb_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST_SIZE,
+                                 gb_control_get_manifest_size_callback);
+  if (ret != 0) {
     return -1;
   }
 
@@ -92,8 +106,9 @@ int control_send_get_manifest_request(int sock) {
     return -1;
   }
 
-  ret = gb_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST, gb_control_get_manifest_callback);
-  if(ret != 0) {
+  ret = gb_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST,
+                                   gb_control_get_manifest_callback);
+  if (ret != 0) {
     return -1;
   }
 

@@ -62,7 +62,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   int ret;
   struct gb_operation *op;
   struct gb_message *msg;
-  bool peer_closed_flag;
+  bool peer_closed_flag = false;
 
   while (1) {
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
