@@ -117,7 +117,7 @@ struct gb_message *gb_message_receive(int sock, bool *flag) {
   }
 
   if (gb_message_is_response(msg) && msg->header.status != GB_OP_SUCCESS) {
-      goto free_msg;
+    goto free_msg;
   }
 
   msg->payload_size = msg->header.size - sizeof(struct gb_operation_msg_hdr);
@@ -224,4 +224,33 @@ void gb_message_dealloc(struct gb_message *msg) {
 
   k_free(msg->payload);
   k_free(msg);
+}
+
+size_t gb_operation_send_request_all(struct zsock_pollfd *fds, size_t fds_len) {
+  size_t i, count = 0;
+  struct gb_operation *op, *op_safe;
+  int ret;
+
+  SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
+                                    node) {
+    if (gb_operation_request_sent(op)) {
+      continue;
+    }
+
+    for (i = 0; i < fds_len; ++i) {
+      if (gb_operation_socket(op) == fds[i].fd &&
+          fds[i].revents & ZSOCK_POLLOUT) {
+        ret = gb_operation_send_request(op);
+        if (ret == 0) {
+          LOG_DBG("Request %u sent", op->operation_id);
+          count++;
+        } else {
+          LOG_WRN("Error in sending request %d", ret);
+        }
+        break;
+      }
+    }
+  }
+
+  return count;
 }

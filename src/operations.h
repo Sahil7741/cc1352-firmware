@@ -9,6 +9,7 @@
 #include "greybus_protocol.h"
 #include <stdbool.h>
 #include <zephyr/sys/dlist.h>
+#include <zephyr/net/socket.h>
 
 /* Return codes for the functions defined here */
 #define SUCCESS 0
@@ -214,5 +215,14 @@ struct gb_operation *gb_operation_find_by_id(uint16_t);
  * @param pointer to the message to deallcate
  */
 void gb_message_dealloc(struct gb_message *);
+
+/*
+ * Send all pending request operations if the socket is available.
+ *
+ * @param pollfds for the sockets that are acitve
+ *
+ * @return number of opertations sent.
+ */
+size_t gb_operation_send_request_all(struct zsock_pollfd *, size_t);
 
 #endif

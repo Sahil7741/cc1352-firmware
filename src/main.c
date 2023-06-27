@@ -124,7 +124,6 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct gb_operation *op, *op_safe;
 
   while (1) {
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
@@ -146,26 +145,9 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
 
     /// Send all pending requests
     k_mutex_lock(&operations_queue_mutex, K_FOREVER);
-    SYS_DLIST_FOR_EACH_CONTAINER_SAFE(gb_operation_queue_get(), op, op_safe,
-                                      node) {
-      if (gb_operation_request_sent(op)) {
-        continue;
-      }
-
-      for (i = 0; i < len; ++i) {
-        if (gb_operation_socket(op) == fds[i].fd &&
-            fds[i].revents & ZSOCK_POLLOUT) {
-          ret = gb_operation_send_request(op);
-          if (ret == 0) {
-            LOG_DBG("Request %u sent", op->operation_id);
-          } else {
-            LOG_WRN("Error in sending request %d", ret);
-          }
-          break;
-        }
-      }
-    }
+    ret = gb_operation_send_request_all(fds, len);
     k_mutex_unlock(&operations_queue_mutex);
+    LOG_DBG("Written %d operations", ret);
 
   sleep_label:
     // Not sure why this is needed.
