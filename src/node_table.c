@@ -1,4 +1,5 @@
 #include "node_table.h"
+#include "error_handling.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
@@ -66,10 +67,10 @@ static void remove_node_by_pos(const size_t pos) {
   }
 }
 
-bool node_table_add_node(const struct in6_addr *node_addr) {
+int node_table_add_node(const struct in6_addr *node_addr) {
   if (nodes_pos >= MAX_NODE_TABLE_LEN) {
     LOG_WRN("Reached max greybus nodes limit");
-    return false;
+    return -E_TABLE_FULL;
   }
 
   k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -80,7 +81,7 @@ bool node_table_add_node(const struct in6_addr *node_addr) {
   nodes_pos++;
   k_mutex_unlock(&nodes_table_mutex);
 
-  return true;
+  return SUCCESS;
 }
 
 bool node_table_is_active_by_addr(const struct in6_addr *node_addr) {
@@ -91,39 +92,44 @@ bool node_table_is_active_by_addr(const struct in6_addr *node_addr) {
   return ret;
 }
 
-bool node_table_remove_node_by_addr(const struct in6_addr *node_addr) {
+int node_table_remove_node_by_addr(const struct in6_addr *node_addr) {
+  int ret;
   if (nodes_pos <= 0) {
-    return false;
+    return -E_EMPTY;
   }
 
   k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_addr(node_addr);
   if (pos < 0) {
+    ret = -E_NOT_FOUND;
     goto early_fail;
   }
 
   remove_node_by_pos(pos);
   k_mutex_unlock(&nodes_table_mutex);
 
-  return true;
+  return SUCCESS;
 
 early_fail:
   k_mutex_unlock(&nodes_table_mutex);
-  return false;
+  return ret;
 }
 
-bool node_table_alloc_cports_by_addr(const struct in6_addr *node_addr,
+int node_table_alloc_cports_by_addr(const struct in6_addr *node_addr,
                                      size_t num_cports) {
   size_t i;
+  int ret;
 
   k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_addr(node_addr);
   if (pos < 0) {
+    ret = -E_NOT_FOUND;
     goto early_fail;
   }
 
   nodes_table[pos].cports = k_malloc(sizeof(int) * num_cports);
   if (nodes_table[pos].cports == NULL) {
+    ret = -E_NO_HEAP_MEM;
     goto early_fail;
   }
 
@@ -135,44 +141,49 @@ bool node_table_alloc_cports_by_addr(const struct in6_addr *node_addr,
   nodes_table[pos].num_cports = num_cports;
 
   k_mutex_unlock(&nodes_table_mutex);
-  return true;
+  return SUCCESS;
 
 early_fail:
   k_mutex_unlock(&nodes_table_mutex);
-  return false;
+  return ret;
 }
 
-bool node_table_add_cport_by_cport0(int cport0, int sock, size_t cport_num) {
+int node_table_add_cport_by_cport0(int cport0, int sock, size_t cport_num) {
+  int ret;
+
   k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_cport0(cport0);
   if (pos == -1) {
+    ret = -E_NOT_FOUND;
     goto early_fail;
   }
 
   if (nodes_table[pos].num_cports <= 0) {
     LOG_WRN("Cports for socket %d have not been initialized", cport0);
+    ret = -E_UNINITIALIZED_CPORT;
     goto early_fail;
   }
 
   if (nodes_table[pos].num_cports < cport_num) {
     LOG_WRN("Cport num %u exceeds the allocated cports", cport_num);
+    ret = -E_INVALID_CPORT_ALLOC;
     goto early_fail;
   }
 
   nodes_table[pos].cports[cport_num - 1] = sock;
 
   k_mutex_unlock(&nodes_table_mutex);
-  return true;
+  return SUCCESS;
 
 early_fail:
   k_mutex_unlock(&nodes_table_mutex);
-  return false;
+  return ret;
 }
 
-bool node_table_remove_cport_by_socket(int sock) {
+int node_table_remove_cport_by_socket(int sock) {
   size_t i, j;
   if (nodes_pos <= 0) {
-    return false;
+    return -E_NOT_FOUND;
   }
 
   k_mutex_lock(&nodes_table_mutex, K_FOREVER);
@@ -194,11 +205,11 @@ bool node_table_remove_cport_by_socket(int sock) {
   }
 
   k_mutex_unlock(&nodes_table_mutex);
-  return false;
+  return -E_NOT_FOUND;
 
 success:
   k_mutex_unlock(&nodes_table_mutex);
-  return true;
+  return SUCCESS;
 }
 
 size_t node_table_get_all_cports(int *arr, size_t arr_len) {

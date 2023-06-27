@@ -12,17 +12,14 @@
 
 #define MAX_NODE_TABLE_LEN CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 
-/* The return codes for the functions */
-#define SUCCESS 0
-#define E_NOT_FOUND 1
-#define E_INVALID_CPORT_ALLOC 2
-
 /*
  * Add a new node to the table.
  *
- * @returns true if successful, false in case of error
+ * @param addr: IPV6 address of node.
+ *
+ * @returns 0 if successful, negative in case of error
  */
-bool node_table_add_node(const struct in6_addr *);
+int node_table_add_node(const struct in6_addr *);
 
 /*
  * Check if a node is already present in the table
@@ -39,9 +36,9 @@ bool node_table_is_active_by_addr(const struct in6_addr *);
  *
  * @param addr: IPV6 address of node.
  *
- * @returns true if successful, false in case of error
+ * @returns 0 if successful, negative in case of error
  */
-bool node_table_remove_node_by_addr(const struct in6_addr *);
+int node_table_remove_node_by_addr(const struct in6_addr *);
 
 /*
  * Allocate memory for the cports for a node.
@@ -49,9 +46,9 @@ bool node_table_remove_node_by_addr(const struct in6_addr *);
  * @param addr: IPV6 address of node.
  * @param num_cports: number of cports. Note, this should not include Cport0.
  *
- * @returns true if successful, false in case of error
+ * @returns 0 if successful, negative in case of error
  */
-bool node_table_alloc_cports_by_addr(const struct in6_addr *, size_t);
+int node_table_alloc_cports_by_addr(const struct in6_addr *, size_t);
 
 /*
  * Add Cport to a node in the table.
@@ -60,9 +57,9 @@ bool node_table_alloc_cports_by_addr(const struct in6_addr *, size_t);
  * @param sock: Socket to access the cport.
  * @param cport_num: The cport to add the address to.
  *
- * @returns true if successful, false in case of error
+ * @returns 0 if successful, negative in case of error
  */
-bool node_table_add_cport_by_cport0(int, int, size_t);
+int node_table_add_cport_by_cport0(int, int, size_t);
 
 /*
  * Add Cport to a node in the table.
@@ -81,9 +78,9 @@ int node_table_add_cport_by_addr(const struct in6_addr *, int, size_t);
  *
  * @param sock: Socket to access the cport
  *
- * @returns true if successful, false in case of error
+ * @returns 0 if successful, negative in case of error
  */
-bool node_table_remove_cport_by_socket(int);
+int node_table_remove_cport_by_socket(int);
 
 /*
  * Get all cports(sockets) that are currently in the table

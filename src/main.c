@@ -86,7 +86,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
       if (fds[i].revents & ZSOCK_POLLIN) {
         msg = gb_message_receive(fds[i].fd, &peer_closed_flag);
         if (msg == NULL) {
-          if(peer_closed_flag) {
+          if (peer_closed_flag) {
             peer_closed_flag = false;
             node_table_remove_cport_by_socket(fds[i].fd);
           }
@@ -272,11 +272,11 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
 
     for (size_t i = 0; i < ret; ++i) {
       if (!node_table_is_active_by_addr(&node_array[i])) {
-        if (node_table_add_node(&node_array[i])) {
+        if (node_table_add_node(&node_array[i]) < 0) {
+          LOG_WRN("Failed to add node");
+        } else {
           LOG_INF("Added Greybus Node");
           k_msgq_put(&discovered_node_msgq, &node_array[i], K_FOREVER);
-        } else {
-          LOG_WRN("Failed to add node");
         }
       }
     }
