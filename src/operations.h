@@ -52,6 +52,7 @@ struct gb_operation {
   int sock;
   uint16_t operation_id;
   bool request_sent;
+  bool response_received;
   struct gb_message *request;
   struct gb_message *response;
   greybus_operation_callback_t callback;

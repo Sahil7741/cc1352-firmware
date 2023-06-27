@@ -1,12 +1,32 @@
 #include "operations.h"
 #include "error_handling.h"
 #include "greybus_protocol.h"
+#include "zephyr/kernel.h"
 #include <limits.h>
 #include <stdint.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
+
+static void gb_operations_callback_entry(void *, void *, void *);
+
+K_THREAD_DEFINE(gb_operations_callback_thread, 1024, gb_operations_callback_entry, NULL, NULL, NULL, 6,
+                0, 0);
+
+K_MSGQ_DEFINE(gb_operations_callback_msgq, sizeof(struct gb_operation *), 10, 4);
+
+static void gb_operations_callback_entry(void *p1, void *p2, void *p3) {
+  struct gb_operation *op;
+
+  while(k_msgq_get(&gb_operations_callback_msgq, &op, K_FOREVER) == 0) {
+    if (op->callback != NULL) {
+      op->callback(op);
+    }
+
+    gb_operation_dealloc(op);
+  }
+}
 
 static atomic_t operation_id_counter = ATOMIC_INIT(1);
 static sys_dlist_t greybus_operations_list =
@@ -53,6 +73,7 @@ struct gb_operation *gb_operation_alloc(int sock, bool is_oneshot) {
   op->response = NULL;
   op->request = NULL;
   op->request_sent = false;
+  op->response_received = false;
   op->callback = NULL;
 
   if (is_oneshot) {
@@ -175,11 +196,7 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
 sys_dlist_t *gb_operation_queue_get() { return &greybus_operations_list; }
 
 void gb_operation_finish(struct gb_operation *op) {
-  if (op->callback != NULL) {
-    op->callback(op);
-  }
-
-  gb_operation_dealloc(op);
+  k_msgq_put(&gb_operations_callback_msgq, &op, K_FOREVER);
 }
 
 int gb_operation_send_request(struct gb_operation *op) {
