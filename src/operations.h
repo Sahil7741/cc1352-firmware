@@ -8,8 +8,8 @@
 
 #include "greybus_protocol.h"
 #include <stdbool.h>
-#include <zephyr/sys/dlist.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/dlist.h>
 
 /* Return codes for the functions defined here */
 #define SUCCESS 0
@@ -133,16 +133,6 @@ int gb_operation_request_alloc(struct gb_operation *, const void *, size_t,
                                uint8_t, greybus_operation_callback_t);
 
 /*
- * Deallocate greybus operation. It recursively deallocates any allocated
- * request and response. It also removes the operation from operation queue.
- *
- * Note: you probably want to use greybus_operation_finish instead of this.
- *
- * @param op: greybus operation to deallocate
- */
-void gb_operation_dealloc(struct gb_operation *);
-
-/*
  * Queue an operation to be executed.
  *
  * Note: This is asynchronous.
@@ -150,16 +140,6 @@ void gb_operation_dealloc(struct gb_operation *);
  * @param op: greybus operation to execute
  */
 void gb_operation_queue(struct gb_operation *);
-
-/*
- * Send a greybus message. This only works for messages associated with a
- * greybus operation for now.
- *
- * @param msg: greybus message to send.
- *
- * @retun 0 if success, negative in case of error.
- */
-int gb_message_send(const struct gb_message *);
 
 /*
  * Receive a greybus message over a socket.
@@ -172,34 +152,12 @@ int gb_message_send(const struct gb_message *);
 struct gb_message *gb_message_receive(int, bool *);
 
 /*
- * Get the greybus operation queue. This use useful for enumerating over the
- * queue.
- *
- * @return greybus operation queue
- */
-sys_dlist_t *gb_operation_queue_get();
-
-/*
  * Mark a greybus operation as complete. Call the callback and deallocate the
  * resources.
  *
  * @param op: greybus operation.
  */
 void gb_operation_finish(struct gb_operation *);
-
-/*
- * Send greybus request for this operation. This is just a helper function that
- * does a bunch of checking internally. If the request has already been sent,
- * then this does nothing.
- *
- * Note: Do not use operation directly after this request. In case of
- * unidirectional requests, this call will deallocate the request.
- *
- * @param op: greybus operation.
- *
- * @return number of bytes sent if success, negative in case of error.
- */
-int gb_operation_send_request(struct gb_operation *);
 
 /*
  * Find the greybus operation by operation_id.

@@ -11,15 +11,29 @@ LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static void gb_operations_callback_entry(void *, void *, void *);
 
-K_THREAD_DEFINE(gb_operations_callback_thread, 1024, gb_operations_callback_entry, NULL, NULL, NULL, 6,
-                0, 0);
+K_THREAD_DEFINE(gb_operations_callback_thread, 1024,
+                gb_operations_callback_entry, NULL, NULL, NULL, 6, 0, 0);
 
-K_MSGQ_DEFINE(gb_operations_callback_msgq, sizeof(struct gb_operation *), 10, 4);
+K_MSGQ_DEFINE(gb_operations_callback_msgq, sizeof(struct gb_operation *), 10,
+              4);
+
+static void gb_operation_dealloc(struct gb_operation *op) {
+  if (op == NULL) {
+    return;
+  }
+
+  gb_message_dealloc(op->request);
+  gb_message_dealloc(op->response);
+
+  sys_dlist_remove(&op->node);
+
+  k_free(op);
+}
 
 static void gb_operations_callback_entry(void *p1, void *p2, void *p3) {
   struct gb_operation *op;
 
-  while(k_msgq_get(&gb_operations_callback_msgq, &op, K_FOREVER) == 0) {
+  while (k_msgq_get(&gb_operations_callback_msgq, &op, K_FOREVER) == 0) {
     if (op->callback != NULL) {
       op->callback(op);
     }
@@ -63,6 +77,46 @@ static int read_data(int sock, void *data, size_t len) {
   return recieved;
 }
 
+static int gb_message_send(const struct gb_message *msg) {
+  int ret;
+  struct gb_operation *op = msg->operation;
+
+  ret = write_data(op->sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
+  if (ret < 0) {
+    return -E_SEND_HEADER;
+  }
+
+  ret = write_data(op->sock, msg->payload, msg->payload_size);
+  if (ret < 0) {
+    return -E_SEND_PAYLOAD;
+  }
+
+  return SUCCESS;
+}
+
+static int gb_operation_send_request(struct gb_operation *op) {
+  if (gb_operation_request_sent(op)) {
+    return -E_ALREADY_SENT;
+  }
+
+  if (op->request == NULL) {
+    return -E_NULL_REQUEST;
+  }
+
+  int ret = gb_message_send(op->request);
+  if (ret < 0) {
+    return ret;
+  }
+
+  op->request_sent = true;
+
+  if (gb_operation_is_unidirectional(op)) {
+    gb_operation_finish(op);
+  }
+
+  return SUCCESS;
+}
+
 struct gb_operation *gb_operation_alloc(int sock, bool is_oneshot) {
   struct gb_operation *op = k_malloc(sizeof(struct gb_operation));
   if (!op) {
@@ -91,36 +145,6 @@ struct gb_operation *gb_operation_alloc(int sock, bool is_oneshot) {
 
 void gb_operation_queue(struct gb_operation *op) {
   sys_dlist_append(&greybus_operations_list, &op->node);
-}
-
-void gb_operation_dealloc(struct gb_operation *op) {
-  if (op == NULL) {
-    return;
-  }
-
-  gb_message_dealloc(op->request);
-  gb_message_dealloc(op->response);
-
-  sys_dlist_remove(&op->node);
-
-  k_free(op);
-}
-
-int gb_message_send(const struct gb_message *msg) {
-  int ret;
-  struct gb_operation *op = msg->operation;
-
-  ret = write_data(op->sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
-  if (ret < 0) {
-    return -E_SEND_HEADER;
-  }
-
-  ret = write_data(op->sock, msg->payload, msg->payload_size);
-  if (ret < 0) {
-    return -E_SEND_PAYLOAD;
-  }
-
-  return SUCCESS;
 }
 
 struct gb_message *gb_message_receive(int sock, bool *flag) {
@@ -193,33 +217,8 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
   return SUCCESS;
 }
 
-sys_dlist_t *gb_operation_queue_get() { return &greybus_operations_list; }
-
 void gb_operation_finish(struct gb_operation *op) {
   k_msgq_put(&gb_operations_callback_msgq, &op, K_FOREVER);
-}
-
-int gb_operation_send_request(struct gb_operation *op) {
-  if (gb_operation_request_sent(op)) {
-    return -E_ALREADY_SENT;
-  }
-
-  if (op->request == NULL) {
-    return -E_NULL_REQUEST;
-  }
-
-  int ret = gb_message_send(op->request);
-  if (ret < 0) {
-    return ret;
-  }
-
-  op->request_sent = true;
-
-  if (gb_operation_is_unidirectional(op)) {
-    gb_operation_finish(op);
-  }
-
-  return SUCCESS;
 }
 
 struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
