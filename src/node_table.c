@@ -7,6 +7,8 @@
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
+K_MUTEX_DEFINE(nodes_table_mutex);
+
 struct node_table_item {
   struct in6_addr addr;
   int cport0;
@@ -70,17 +72,21 @@ bool node_table_add_node(const struct in6_addr *node_addr) {
     return false;
   }
 
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   memcpy(&nodes_table[nodes_pos].addr, node_addr, sizeof(struct in6_addr));
   nodes_table[nodes_pos].cport0 = -1;
   nodes_table[nodes_pos].num_cports = 0;
   nodes_table[nodes_pos].cports = NULL;
   nodes_pos++;
+  k_mutex_unlock(&nodes_table_mutex);
 
   return true;
 }
 
 bool node_table_is_active_by_addr(const struct in6_addr *node_addr) {
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   bool ret = find_node_by_addr(node_addr) >= 0;
+  k_mutex_unlock(&nodes_table_mutex);
 
   return ret;
 }
@@ -90,16 +96,19 @@ bool node_table_remove_node_by_addr(const struct in6_addr *node_addr) {
     return false;
   }
 
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_addr(node_addr);
   if (pos < 0) {
     goto early_fail;
   }
 
   remove_node_by_pos(pos);
+  k_mutex_unlock(&nodes_table_mutex);
 
   return true;
 
 early_fail:
+  k_mutex_unlock(&nodes_table_mutex);
   return false;
 }
 
@@ -107,6 +116,7 @@ bool node_table_alloc_cports_by_addr(const struct in6_addr *node_addr,
                                      size_t num_cports) {
   size_t i;
 
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_addr(node_addr);
   if (pos < 0) {
     goto early_fail;
@@ -124,13 +134,16 @@ bool node_table_alloc_cports_by_addr(const struct in6_addr *node_addr,
 
   nodes_table[pos].num_cports = num_cports;
 
+  k_mutex_unlock(&nodes_table_mutex);
   return true;
 
 early_fail:
+  k_mutex_unlock(&nodes_table_mutex);
   return false;
 }
 
 bool node_table_add_cport_by_cport0(int cport0, int sock, size_t cport_num) {
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_cport0(cport0);
   if (pos == -1) {
     goto early_fail;
@@ -148,9 +161,11 @@ bool node_table_add_cport_by_cport0(int cport0, int sock, size_t cport_num) {
 
   nodes_table[pos].cports[cport_num - 1] = sock;
 
+  k_mutex_unlock(&nodes_table_mutex);
   return true;
 
 early_fail:
+  k_mutex_unlock(&nodes_table_mutex);
   return false;
 }
 
@@ -160,6 +175,7 @@ bool node_table_remove_cport_by_socket(int sock) {
     return false;
   }
 
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   for (i = 0; i < nodes_pos; ++i) {
     if (nodes_table[i].cport0 == sock) {
       // Remove node
@@ -177,9 +193,11 @@ bool node_table_remove_cport_by_socket(int sock) {
     }
   }
 
+  k_mutex_unlock(&nodes_table_mutex);
   return false;
 
 success:
+  k_mutex_unlock(&nodes_table_mutex);
   return true;
 }
 
@@ -187,6 +205,7 @@ size_t node_table_get_all_cports(int *arr, size_t arr_len) {
   size_t i, j;
   size_t count = 0;
 
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   for (i = 0; i < nodes_pos && count < arr_len; ++i) {
     if (nodes_table[i].cport0 >= 0) {
       arr[count] = nodes_table[i].cport0;
@@ -201,6 +220,7 @@ size_t node_table_get_all_cports(int *arr, size_t arr_len) {
     }
   }
 
+  k_mutex_unlock(&nodes_table_mutex);
   return count;
 }
 
@@ -209,6 +229,7 @@ size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *arr,
   size_t i, j;
   size_t count = 0;
 
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   for (i = 0; i < nodes_pos && count < arr_len; ++i) {
     if (nodes_table[i].cport0 >= 0) {
       arr[count].fd = nodes_table[i].cport0;
@@ -223,26 +244,38 @@ size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *arr,
     }
   }
 
+  k_mutex_unlock(&nodes_table_mutex);
   return count;
 }
 
 int node_table_add_cport_by_addr(const struct in6_addr *node_addr, int sock,
                                  size_t cport_num) {
+  int ret;
+
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
   int pos = find_node_by_addr(node_addr);
   if (pos < 0) {
-    return -E_NOT_FOUND;
+    ret = -E_NOT_FOUND;
+    goto early_fail;
   }
 
   if (cport_num == 0) {
     nodes_table[pos].cport0 = sock;
-    return sock;
+    goto success;
   }
 
   if (nodes_table[pos].num_cports <= cport_num) {
-    return -E_INVALID_CPORT_ALLOC;
+    ret = -E_INVALID_CPORT_ALLOC;
+    goto early_fail;
   }
 
   nodes_table[pos].cports[cport_num - 1] = sock;
 
+success:
+  k_mutex_unlock(&nodes_table_mutex);
   return sock;
+
+early_fail:
+  k_mutex_unlock(&nodes_table_mutex);
+  return ret;
 }

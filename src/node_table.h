@@ -1,6 +1,6 @@
 /*
  * This file is ment to hold functions to maintain a table of active nodes.
- * THe functions defined here are not thread safe.
+ * THe functions defined here are thread safe.
  */
 
 #ifndef NODE_TABLE_H

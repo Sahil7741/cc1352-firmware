@@ -35,7 +35,6 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
-K_MUTEX_DEFINE(nodes_table_mutex);
 K_MUTEX_DEFINE(operations_queue_mutex);
 
 void node_discovery_entry(void *, void *, void *);
@@ -65,9 +64,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   bool peer_closed_flag = false;
 
   while (1) {
-    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
-    k_mutex_unlock(&nodes_table_mutex);
 
     if (len <= 0) {
       goto sleep_label;
@@ -91,9 +88,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
         if (msg == NULL) {
           if(peer_closed_flag) {
             peer_closed_flag = false;
-            k_mutex_lock(&nodes_table_mutex, K_FOREVER);
             node_table_remove_cport_by_socket(fds[i].fd);
-            k_mutex_unlock(&nodes_table_mutex);
           }
           continue;
         }
@@ -132,9 +127,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
   struct gb_operation *op, *op_safe;
 
   while (1) {
-    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
-    k_mutex_unlock(&nodes_table_mutex);
 
     if (len <= 0) {
       goto sleep_label;
@@ -244,9 +237,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
       goto fail;
     }
 
-    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     ret = node_table_add_cport_by_addr(&node_addr.sin6_addr, ret, 0);
-    k_mutex_unlock(&nodes_table_mutex);
     if (ret < 0) {
       LOG_WRN("Failed to add cport0 to node table");
       goto fail;
@@ -263,9 +254,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     continue;
 
   fail:
-    k_mutex_lock(&nodes_table_mutex, K_FOREVER);
     node_table_remove_node_by_addr(&node_addr.sin6_addr);
-    k_mutex_unlock(&nodes_table_mutex);
   }
 }
 
@@ -282,7 +271,6 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
     LOG_INF("Discoverd %u nodes", ret);
 
     for (size_t i = 0; i < ret; ++i) {
-      k_mutex_lock(&nodes_table_mutex, K_FOREVER);
       if (!node_table_is_active_by_addr(&node_array[i])) {
         if (node_table_add_node(&node_array[i])) {
           LOG_INF("Added Greybus Node");
@@ -291,7 +279,6 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
           LOG_WRN("Failed to add node");
         }
       }
-      k_mutex_unlock(&nodes_table_mutex);
     }
 
     // Put the thread to sleep for an interval
