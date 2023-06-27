@@ -154,20 +154,6 @@ early_fail:
   return false;
 }
 
-bool node_table_add_cport0(const struct in6_addr *node_addr, int sock) {
-  int pos = find_node_by_addr(node_addr);
-  if (pos < 0) {
-    goto early_fail;
-  }
-
-  nodes_table[pos].cport0 = sock;
-
-  return true;
-
-early_fail:
-  return false;
-}
-
 bool node_table_remove_cport_by_socket(int sock) {
   size_t i, j;
   if (nodes_pos <= 0) {
@@ -197,18 +183,17 @@ success:
   return true;
 }
 
-
 size_t node_table_get_all_cports(int *arr, size_t arr_len) {
   size_t i, j;
   size_t count = 0;
 
-  for(i = 0; i < nodes_pos && count < arr_len; ++i) {
+  for (i = 0; i < nodes_pos && count < arr_len; ++i) {
     if (nodes_table[i].cport0 >= 0) {
       arr[count] = nodes_table[i].cport0;
       count++;
     }
 
-    for(j = 0; j < nodes_table[i].num_cports && count < arr_len; ++j) {
+    for (j = 0; j < nodes_table[i].num_cports && count < arr_len; ++j) {
       if (nodes_table[i].cports[j] >= 0) {
         arr[count] = nodes_table[i].cports[j];
         count++;
@@ -219,17 +204,18 @@ size_t node_table_get_all_cports(int *arr, size_t arr_len) {
   return count;
 }
 
-size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *arr, size_t arr_len) {
+size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *arr,
+                                        size_t arr_len) {
   size_t i, j;
   size_t count = 0;
 
-  for(i = 0; i < nodes_pos && count < arr_len; ++i) {
+  for (i = 0; i < nodes_pos && count < arr_len; ++i) {
     if (nodes_table[i].cport0 >= 0) {
       arr[count].fd = nodes_table[i].cport0;
       count++;
     }
 
-    for(j = 0; j < nodes_table[i].num_cports && count < arr_len; ++j) {
+    for (j = 0; j < nodes_table[i].num_cports && count < arr_len; ++j) {
       if (nodes_table[i].cports[j] >= 0) {
         arr[count].fd = nodes_table[i].cports[j];
         count++;
@@ -238,4 +224,25 @@ size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *arr, size_t arr_len
   }
 
   return count;
+}
+
+int node_table_add_cport_by_addr(const struct in6_addr *node_addr, int sock,
+                                 size_t cport_num) {
+  int pos = find_node_by_addr(node_addr);
+  if (pos < 0) {
+    return -E_NOT_FOUND;
+  }
+
+  if (cport_num == 0) {
+    nodes_table[pos].cport0 = sock;
+    return sock;
+  }
+
+  if (nodes_table[pos].num_cports <= cport_num) {
+    return -E_INVALID_CPORT_ALLOC;
+  }
+
+  nodes_table[pos].cports[cport_num - 1] = sock;
+
+  return sock;
 }

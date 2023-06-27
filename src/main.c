@@ -231,7 +231,6 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
 void node_setup_entry(void *p1, void *p2, void *p3) {
   struct sockaddr_in6 node_addr;
   int ret;
-  bool temp;
 
   while (k_msgq_get(&discovered_node_msgq, &node_addr.sin6_addr, K_FOREVER) ==
          0) {
@@ -246,9 +245,9 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     }
 
     k_mutex_lock(&nodes_table_mutex, K_FOREVER);
-    temp = node_table_add_cport0(&node_addr.sin6_addr, ret);
+    ret = node_table_add_cport_by_addr(&node_addr.sin6_addr, ret, 0);
     k_mutex_unlock(&nodes_table_mutex);
-    if (!temp) {
+    if (ret < 0) {
       LOG_WRN("Failed to add cport0 to node table");
       goto fail;
     }

@@ -12,6 +12,11 @@
 
 #define MAX_NODE_TABLE_LEN CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 
+/* The return codes for the functions */
+#define SUCCESS 0
+#define E_NOT_FOUND 1
+#define E_INVALID_CPORT_ALLOC 2
+
 /*
  * Add a new node to the table.
  *
@@ -62,12 +67,13 @@ bool node_table_add_cport_by_cport0(int, int, size_t);
 /*
  * Add Cport to a node in the table.
  *
- * @param addr: IPV6 address of node.
  * @param sock: Socket for Cport0.
+ * @param sock: Socket to access the cport.
+ * @param cport_num: The cport to add the address to.
  *
- * @returns true if successful, false in case of error
+ * @returns sock if successful, negative in case of error
  */
-bool node_table_add_cport0(const struct in6_addr *, int);
+int node_table_add_cport_by_addr(const struct in6_addr *, int, size_t);
 
 /*
  * Make a Cport inactive.
