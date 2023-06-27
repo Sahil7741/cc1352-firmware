@@ -17,6 +17,8 @@ K_THREAD_DEFINE(gb_operations_callback_thread, 1024,
 K_MSGQ_DEFINE(gb_operations_callback_msgq, sizeof(struct gb_operation *), 10,
               4);
 
+K_MUTEX_DEFINE(gb_operations_mutex);
+
 static void gb_operation_dealloc(struct gb_operation *op) {
   if (op == NULL) {
     return;
@@ -38,7 +40,9 @@ static void gb_operations_callback_entry(void *p1, void *p2, void *p3) {
       op->callback(op);
     }
 
+    k_mutex_lock(&gb_operations_mutex, K_FOREVER);
     gb_operation_dealloc(op);
+    k_mutex_unlock(&gb_operations_mutex);
   }
 }
 
@@ -144,7 +148,9 @@ struct gb_operation *gb_operation_alloc(int sock, bool is_oneshot) {
 }
 
 void gb_operation_queue(struct gb_operation *op) {
+  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
   sys_dlist_append(&greybus_operations_list, &op->node);
+  k_mutex_unlock(&gb_operations_mutex);
 }
 
 struct gb_message *gb_message_receive(int sock, bool *flag) {
@@ -191,16 +197,21 @@ early_exit:
 int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
                                size_t payload_len, uint8_t request_type,
                                greybus_operation_callback_t callback) {
+  int ret;
+
+  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
   op->request = k_malloc(sizeof(struct gb_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
-    return -E_NO_HEAP_MEM;
+    ret = -E_NO_HEAP_MEM;
+    goto early_exit;
   }
 
   op->request->payload = k_malloc(payload_len);
   if (op->request->payload == NULL) {
     LOG_WRN("Failed to allocate Greybus request payload");
-    return -E_NO_HEAP_MEM;
+    ret = -E_NO_HEAP_MEM;
+    goto early_exit;
   }
 
   op->request->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
@@ -214,7 +225,11 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
   op->request->operation = op;
   op->callback = callback;
 
-  return SUCCESS;
+  ret = SUCCESS;
+
+early_exit:
+  k_mutex_unlock(&gb_operations_mutex);
+  return ret;
 }
 
 void gb_operation_finish(struct gb_operation *op) {
@@ -224,12 +239,14 @@ void gb_operation_finish(struct gb_operation *op) {
 struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
   struct gb_operation *op;
 
+  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
   SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
     if (op->operation_id == operation_id) {
+      k_mutex_unlock(&gb_operations_mutex);
       return op;
     }
   }
-
+  k_mutex_unlock(&gb_operations_mutex);
   return NULL;
 }
 
@@ -247,6 +264,7 @@ size_t gb_operation_send_request_all(struct zsock_pollfd *fds, size_t fds_len) {
   struct gb_operation *op, *op_safe;
   int ret;
 
+  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
   SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
                                     node) {
     if (gb_operation_request_sent(op)) {
@@ -267,6 +285,7 @@ size_t gb_operation_send_request_all(struct zsock_pollfd *fds, size_t fds_len) {
       }
     }
   }
+  k_mutex_unlock(&gb_operations_mutex);
 
   return count;
 }

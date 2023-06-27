@@ -35,8 +35,6 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
-K_MUTEX_DEFINE(operations_queue_mutex);
-
 void node_discovery_entry(void *, void *, void *);
 void node_setup_entry(void *, void *, void *);
 void node_reader_entry(void *, void *, void *);
@@ -95,7 +93,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
 
         // Handle if the msg is a response to an operation
         if (gb_message_is_response(msg)) {
-          k_mutex_lock(&operations_queue_mutex, K_FOREVER);
           op = gb_operation_find_by_id(msg->header.id);
           if (op == NULL || op->response_received) {
             LOG_DBG("Orphan response");
@@ -106,7 +103,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
             LOG_DBG("Operation with ID %u completed", msg->header.id);
             gb_operation_finish(op);
           }
-          k_mutex_unlock(&operations_queue_mutex);
         } else {
           // Handle if the msg it the request from node.
           gb_message_dealloc(msg);
@@ -145,9 +141,7 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
     }
 
     /// Send all pending requests
-    k_mutex_lock(&operations_queue_mutex, K_FOREVER);
     ret = gb_operation_send_request_all(fds, len);
-    k_mutex_unlock(&operations_queue_mutex);
     LOG_DBG("Written %d operations", ret);
 
   sleep_label:
@@ -227,9 +221,7 @@ void node_setup_entry(void *p1, void *p2, void *p3) {
     }
     LOG_DBG("Added Cport0");
 
-    k_mutex_lock(&operations_queue_mutex, K_FOREVER);
     ret = control_send_get_manifest_size_request(ret);
-    k_mutex_unlock(&operations_queue_mutex);
     if (ret >= 0) {
       LOG_DBG("Sent get manifest size request");
     }

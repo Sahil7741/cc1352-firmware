@@ -1,6 +1,7 @@
 /*
  * This file contains functions to manage greybus operations queue.
  * This allows asynchronous processing of greybus operations.
+ * This API is thread-safe
  */
 
 #ifndef OPERATIONS_H
