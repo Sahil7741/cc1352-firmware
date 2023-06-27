@@ -125,7 +125,7 @@ struct gb_operation *gb_operation_alloc(int, bool);
  * @param type: type of greybus operation
  * @param callback: greybus callback to call on operation completion.
  *
- * @return 0 on success, else error
+ * @return 0 on success, negative in case of error
  */
 int gb_operation_request_alloc(struct gb_operation *, const void *, size_t,
                                uint8_t, greybus_operation_callback_t);
@@ -154,6 +154,8 @@ void gb_operation_queue(struct gb_operation *);
  * greybus operation for now.
  *
  * @param msg: greybus message to send.
+ *
+ * @retun 0 if success, negative in case of error.
  */
 int gb_message_send(const struct gb_message *);
 
@@ -192,6 +194,8 @@ void gb_operation_finish(struct gb_operation *);
  * unidirectional requests, this call will deallocate the request.
  *
  * @param op: greybus operation.
+ *
+ * @return number of bytes sent if success, negative in case of error.
  */
 int gb_operation_send_request(struct gb_operation *);
 

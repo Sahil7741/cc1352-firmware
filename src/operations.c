@@ -1,4 +1,5 @@
 #include "operations.h"
+#include "error_handling.h"
 #include "greybus_protocol.h"
 #include <limits.h>
 #include <stdint.h>
@@ -90,15 +91,15 @@ int gb_message_send(const struct gb_message *msg) {
 
   ret = write_data(op->sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
   if (ret < 0) {
-    return -1;
+    return -E_SEND_HEADER;
   }
 
   ret = write_data(op->sock, msg->payload, msg->payload_size);
   if (ret < 0) {
-    return -1;
+    return -E_SEND_PAYLOAD;
   }
 
-  return 0;
+  return SUCCESS;
 }
 
 struct gb_message *gb_message_receive(int sock, bool *flag) {
@@ -148,13 +149,13 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
   op->request = k_malloc(sizeof(struct gb_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
-    return -1;
+    return -E_NO_HEAP_MEM;
   }
 
   op->request->payload = k_malloc(payload_len);
   if (op->request->payload == NULL) {
     LOG_WRN("Failed to allocate Greybus request payload");
-    return -1;
+    return -E_NO_HEAP_MEM;
   }
 
   op->request->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
@@ -168,7 +169,7 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
   op->request->operation = op;
   op->callback = callback;
 
-  return 0;
+  return SUCCESS;
 }
 
 sys_dlist_t *gb_operation_queue_get() { return &greybus_operations_list; }
