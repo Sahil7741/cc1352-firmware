@@ -36,22 +36,25 @@ static void gb_operation_dealloc(struct gb_operation *op) {
 
 static void callback_work_handler(struct k_work *work) {
   struct gb_operation *op;
+  sys_dnode_t *head_node;
 
-  k_mutex_lock(&gb_operations_callback_mutex, K_FOREVER);
-  sys_dnode_t *head_node = sys_dlist_get(&greybus_operations_callback_list);
-  k_mutex_unlock(&gb_operations_callback_mutex);
+  while (1) {
+    k_mutex_lock(&gb_operations_callback_mutex, K_FOREVER);
+    head_node = sys_dlist_get(&greybus_operations_callback_list);
+    k_mutex_unlock(&gb_operations_callback_mutex);
 
-  if (head_node == NULL) {
-    return;
+    if (head_node == NULL) {
+      return;
+    }
+
+    op = SYS_DLIST_CONTAINER(head_node, op, node);
+
+    if (op->callback != NULL) {
+      op->callback(op);
+    }
+
+    gb_operation_dealloc(op);
   }
-
-  op = SYS_DLIST_CONTAINER(head_node, op, node);
-
-  if (op->callback != NULL) {
-    op->callback(op);
-  }
-
-  gb_operation_dealloc(op);
 }
 
 static int write_data(int sock, const void *data, size_t len) {
