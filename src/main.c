@@ -18,12 +18,10 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
-#include <zephyr/sys/dlist.h>
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
-#define GB_TRANSPORT_TCPIP_BASE_PORT 4242
 #define MAX_NUMBER_OF_SOCKETS CONFIG_NET_SOCKETS_POLL_MAX
 #define NODE_READER_INTERVAL 500
 #define NODE_WRITER_INTERVAL 500

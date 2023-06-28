@@ -1,7 +1,9 @@
 #include "control.h"
+#include "node_handler.h"
 #include "greybus_protocol.h"
 #include "list.h"
 #include "manifest.h"
+#include "node_table.h"
 #include "operations.h"
 #include "zephyr/sys/slist.h"
 #include <stdint.h>
@@ -48,11 +50,32 @@ static void gb_control_get_manifest_callback(struct gb_operation *op) {
 
   sys_slist_t cports = gb_manifest_get_cports(op->response->payload, op->response->payload_size);
   struct gb_cport *cport;
+  size_t max_cport = 0;
+  struct in6_addr addr;
+  int ret;
+
+  SYS_SLIST_FOR_EACH_CONTAINER(&cports, cport, node) {
+    max_cport = MAX(max_cport, cport->id);
+  }
+
+  ret = node_table_get_addr_by_cport0(op->sock, &addr);
+  if (ret < 0) {
+    goto early_exit;
+  }
+
+  ret = node_table_alloc_cports_by_addr(&addr, max_cport);
+  if (ret < 0) {
+    goto early_exit;
+  }
 
   SYS_SLIST_FOR_EACH_CONTAINER(&cports, cport, node) {
     LOG_DBG("CPort: ID %u, Protocol: %u, Bundle: %u", cport->id, cport->protocol, cport->bundle);
+    if (cport->id > 0) {
+      node_handler_setup_node_queue(&addr, cport->id);
+    }
   }
 
+early_exit:
   gb_cports_free(cports);
 }
 

@@ -1,6 +1,7 @@
 #include "node_handler.h"
 #include "control.h"
 #include "node_table.h"
+#include "svc.h"
 #include "zephyr/kernel.h"
 #include "zephyr/net/net_ip.h"
 #include <zephyr/logging/log.h>
@@ -60,7 +61,7 @@ void node_setup(struct in6_addr *node_ip_addr, uint8_t cport_num) {
   memcpy(&node_addr.sin6_addr, node_ip_addr, sizeof(struct in6_addr));
   node_addr.sin6_family = AF_INET6;
   node_addr.sin6_scope_id = 0;
-  node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
+  node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_num);
 
   ret = connect_to_node((struct sockaddr *)&node_addr);
   if (ret < 0) {
@@ -68,27 +69,36 @@ void node_setup(struct in6_addr *node_ip_addr, uint8_t cport_num) {
     goto fail;
   }
 
-  ret = node_table_add_cport_by_addr(&node_addr.sin6_addr, ret, 0);
+  ret = node_table_add_cport_by_addr(&node_addr.sin6_addr, ret, cport_num);
   if (ret < 0) {
-    LOG_WRN("Failed to add cport0 to node table");
+    LOG_WRN("Failed to add cport %u to node table with error %d", cport_num, ret);
     goto fail;
   }
-  LOG_DBG("Added Cport0");
+  LOG_DBG("Added Cport %u", cport_num);
 
-  ret = control_send_get_manifest_size_request(ret);
-  if (ret >= 0) {
-    LOG_DBG("Sent get manifest size request");
+  if (cport_num == 0) {
+    ret = control_send_get_manifest_size_request(ret);
+    if (ret >= 0) {
+      LOG_DBG("Sent get manifest size request");
+    }
+  } else {
+    ret = svc_send_ping(ret);
+    if (ret >= 0) {
+      LOG_DBG("Sent ping request");
+    }
   }
 
   return;
 
 fail:
-  node_table_remove_node_by_addr(&node_addr.sin6_addr);
+  if (cport_num == 0) {
+    node_table_remove_node_by_addr(&node_addr.sin6_addr);
+  }
 }
 
 static void node_setup_work_handler(struct k_work *work) {
   struct gb_cport_connection cport;
-  if (k_msgq_get(&node_setup_queue, &cport, K_NO_WAIT) == 0) {
+  while (k_msgq_get(&node_setup_queue, &cport, K_NO_WAIT) == 0) {
     node_setup(&cport.addr, cport.cport_num);
   }
 }

@@ -102,4 +102,6 @@ size_t node_table_get_all_cports(int *, size_t);
  */
 size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *, size_t);
 
+int node_table_get_addr_by_cport0(int cport0, struct in6_addr *);
+
 #endif

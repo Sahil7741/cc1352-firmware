@@ -275,7 +275,7 @@ int node_table_add_cport_by_addr(const struct in6_addr *node_addr, int sock,
     goto success;
   }
 
-  if (nodes_table[pos].num_cports <= cport_num) {
+  if (nodes_table[pos].num_cports < cport_num) {
     ret = -E_INVALID_CPORT_ALLOC;
     goto early_fail;
   }
@@ -285,6 +285,23 @@ int node_table_add_cport_by_addr(const struct in6_addr *node_addr, int sock,
 success:
   k_mutex_unlock(&nodes_table_mutex);
   return sock;
+
+early_fail:
+  k_mutex_unlock(&nodes_table_mutex);
+  return ret;
+}
+
+
+int node_table_get_addr_by_cport0(int cport0, struct in6_addr *addr) {
+  int ret = SUCCESS;
+  k_mutex_lock(&nodes_table_mutex, K_FOREVER);
+  int pos = find_node_by_cport0(cport0);
+  if (pos < 0) {
+    ret = -E_NOT_FOUND;
+    goto early_fail;
+  }
+
+  memcpy(addr, &nodes_table[pos].addr, sizeof(struct in6_addr));
 
 early_fail:
   k_mutex_unlock(&nodes_table_mutex);
