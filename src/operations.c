@@ -6,18 +6,22 @@
 #include <stdint.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/dlist.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-static void gb_operations_callback_entry(void *, void *, void *);
-
-K_THREAD_DEFINE(gb_operations_callback_thread, 1024,
-                gb_operations_callback_entry, NULL, NULL, NULL, 6, 0, 0);
-
-K_MSGQ_DEFINE(gb_operations_callback_msgq, sizeof(struct gb_operation *), 10,
-              4);
-
 K_MUTEX_DEFINE(gb_operations_mutex);
+K_MUTEX_DEFINE(gb_operations_callback_mutex);
+
+static void callback_work_handler(struct k_work *);
+
+static atomic_t operation_id_counter = ATOMIC_INIT(1);
+static sys_dlist_t greybus_operations_list =
+    SYS_DLIST_STATIC_INIT(&greybus_operations_list);
+static sys_dlist_t greybus_operations_callback_list =
+    SYS_DLIST_STATIC_INIT(&greybus_operations_callback_list);
+
+K_WORK_DEFINE(callback_work, callback_work_handler);
 
 static void gb_operation_dealloc(struct gb_operation *op) {
   if (op == NULL) {
@@ -30,21 +34,25 @@ static void gb_operation_dealloc(struct gb_operation *op) {
   k_free(op);
 }
 
-static void gb_operations_callback_entry(void *p1, void *p2, void *p3) {
+static void callback_work_handler(struct k_work *work) {
   struct gb_operation *op;
 
-  while (k_msgq_get(&gb_operations_callback_msgq, &op, K_FOREVER) == 0) {
-    if (op->callback != NULL) {
-      op->callback(op);
-    }
+  k_mutex_lock(&gb_operations_callback_mutex, K_FOREVER);
+  sys_dnode_t *head_node = sys_dlist_get(&greybus_operations_callback_list);
+  k_mutex_unlock(&gb_operations_callback_mutex);
 
-    gb_operation_dealloc(op);
+  if (head_node == NULL) {
+    return;
   }
-}
 
-static atomic_t operation_id_counter = ATOMIC_INIT(1);
-static sys_dlist_t greybus_operations_list =
-    SYS_DLIST_STATIC_INIT(&greybus_operations_list);
+  op = SYS_DLIST_CONTAINER(head_node, op, node);
+
+  if (op->callback != NULL) {
+    op->callback(op);
+  }
+
+  gb_operation_dealloc(op);
+}
 
 static int write_data(int sock, const void *data, size_t len) {
   int ret;
@@ -96,7 +104,10 @@ static int gb_message_send(const struct gb_message *msg) {
 
 static void gb_operation_finish(struct gb_operation *op) {
   sys_dlist_remove(&op->node);
-  k_msgq_put(&gb_operations_callback_msgq, &op, K_FOREVER);
+  k_mutex_lock(&gb_operations_callback_mutex, K_FOREVER);
+  sys_dlist_append(&greybus_operations_callback_list, &op->node);
+  k_mutex_unlock(&gb_operations_callback_mutex);
+  k_work_submit(&callback_work);
 }
 
 static struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
