@@ -1,8 +1,8 @@
 #include "control.h"
-#include "node_handler.h"
 #include "greybus_protocol.h"
 #include "list.h"
 #include "manifest.h"
+#include "node_handler.h"
 #include "node_table.h"
 #include "operations.h"
 #include "zephyr/sys/slist.h"
@@ -48,7 +48,8 @@ static void gb_control_get_manifest_callback(struct gb_operation *op) {
     return;
   }
 
-  sys_slist_t cports = gb_manifest_get_cports(op->response->payload, op->response->payload_size);
+  sys_slist_t cports =
+      gb_manifest_get_cports(op->response->payload, op->response->payload_size);
   struct gb_cport *cport;
   size_t max_cport = 0;
   struct in6_addr addr;
@@ -69,7 +70,8 @@ static void gb_control_get_manifest_callback(struct gb_operation *op) {
   }
 
   SYS_SLIST_FOR_EACH_CONTAINER(&cports, cport, node) {
-    LOG_DBG("CPort: ID %u, Protocol: %u, Bundle: %u", cport->id, cport->protocol, cport->bundle);
+    LOG_DBG("CPort: ID %u, Protocol: %u, Bundle: %u", cport->id,
+            cport->protocol, cport->bundle);
     if (cport->id > 0) {
       node_handler_setup_node_queue(&addr, cport->id);
     }
@@ -79,63 +81,40 @@ early_exit:
   gb_cports_free(cports);
 }
 
-int control_send_protocol_version_request(int sock) {
+static int control_send_request(int sock, void *payload, size_t payload_len,
+                                uint8_t request_type,
+                                greybus_operation_callback_t callback) {
   int ret;
   struct gb_operation *op = gb_operation_alloc(sock, false);
   if (op == NULL) {
-    return -1;
+    return -E_NOT_FOUND;
   }
 
-  struct gb_control_version_request req;
-
-  req.major = GB_SVC_VERSION_MAJOR;
-  req.minor = GB_SVC_VERSION_MINOR;
-
-  ret = gb_operation_request_alloc(op, &req,
-                                   sizeof(struct gb_control_version_request),
-                                   GB_CONTROL_TYPE_PROTOCOL_VERSION, NULL);
-  if (ret != 0) {
-    return -1;
+  ret = gb_operation_request_alloc(op, payload, payload_len, request_type,
+                                   callback);
+  if (ret < 0) {
+    return ret;
   }
 
   gb_operation_queue(op);
 
-  return 0;
+  return SUCCESS;
+}
+
+int control_send_protocol_version_request(int sock) {
+  struct gb_control_version_request req = {
+    .major = GB_SVC_VERSION_MAJOR,
+    .minor = GB_SVC_VERSION_MINOR
+  };
+
+  return control_send_request(sock, &req, sizeof(struct gb_control_version_request), GB_CONTROL_TYPE_PROTOCOL_VERSION, NULL);
 }
 
 int control_send_get_manifest_size_request(int sock) {
-  int ret;
-  struct gb_operation *op = gb_operation_alloc(sock, false);
-  if (op == NULL) {
-    return -1;
-  }
-
-  ret =
-      gb_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST_SIZE,
-                                 gb_control_get_manifest_size_callback);
-  if (ret != 0) {
-    return -1;
-  }
-
-  gb_operation_queue(op);
-
-  return 0;
+  return control_send_request(sock, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST_SIZE, gb_control_get_manifest_size_callback);
 }
 
 int control_send_get_manifest_request(int sock) {
-  int ret;
-  struct gb_operation *op = gb_operation_alloc(sock, false);
-  if (op == NULL) {
-    return -1;
-  }
-
-  ret = gb_operation_request_alloc(op, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST,
+  return control_send_request(sock, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST,
                                    gb_control_get_manifest_callback);
-  if (ret != 0) {
-    return -1;
-  }
-
-  gb_operation_queue(op);
-
-  return 0;
 }
