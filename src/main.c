@@ -5,6 +5,7 @@
  */
 
 #include "control.h"
+#include "node_handler.h"
 #include "node_table.h"
 #include "operations.h"
 #include "svc.h"
@@ -33,12 +34,10 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
-K_MSGQ_DEFINE(discovered_node_msgq, sizeof(struct in6_addr), 10, 4);
 
-void node_discovery_entry(void *, void *, void *);
-void node_setup_entry(void *, void *, void *);
-void node_reader_entry(void *, void *, void *);
-void node_writer_entry(void *, void *, void *);
+static void node_discovery_entry(void *, void *, void *);
+static void node_reader_entry(void *, void *, void *);
+static void node_writer_entry(void *, void *, void *);
 
 // Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
@@ -49,10 +48,8 @@ K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5, 0,
 // Thread responsible for writing to greybus nodes
 K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5, 0,
                 0);
-// Thread responsible for setting up a newly discovered node
-K_THREAD_DEFINE(node_setup, 2048, node_setup_entry, NULL, NULL, NULL, 5, 0, 0);
 
-void node_reader_entry(void *p1, void *p2, void *p3) {
+static void node_reader_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[MAX_NUMBER_OF_SOCKETS];
   size_t len = 0;
   size_t i;
@@ -62,13 +59,11 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
 
   while (1) {
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
-
     if (len <= 0) {
       goto sleep_label;
     }
 
     LOG_DBG("Polling %u sockets", len);
-
     for (i = 0; i < len; ++i) {
       fds[i].events = ZSOCK_POLLIN;
     }
@@ -104,7 +99,7 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   }
 }
 
-void node_writer_entry(void *p1, void *p2, void *p3) {
+static void node_writer_entry(void *p1, void *p2, void *p3) {
   struct zsock_pollfd fds[MAX_NUMBER_OF_SOCKETS];
   size_t len = 0;
   size_t i;
@@ -112,13 +107,11 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
 
   while (1) {
     len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
-
     if (len <= 0) {
       goto sleep_label;
     }
 
     LOG_DBG("Polling %u sockets", len);
-
     for (i = 0; i < len; ++i) {
       fds[i].events = ZSOCK_POLLOUT;
     }
@@ -138,44 +131,12 @@ void node_writer_entry(void *p1, void *p2, void *p3) {
   }
 }
 
-static int connect_to_node(const struct sockaddr *addr) {
-  int ret, sock;
-  size_t addr_size;
-
-  if (addr->sa_family == AF_INET6) {
-    sock = zsock_socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-    addr_size = sizeof(struct sockaddr_in6);
-  } else {
-    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    addr_size = sizeof(struct sockaddr_in);
-  }
-
-  if (sock < 0) {
-    LOG_WRN("Failed to create socket %d", errno);
-    goto fail;
-  }
-
-  LOG_INF("Trying to connect to node from socket %d", sock);
-  ret = zsock_connect(sock, addr, addr_size);
-
-  if (ret) {
-    LOG_WRN("Failed to connect to node %d", errno);
-    goto fail;
-  }
-
-  LOG_INF("Connected to Greybus Node");
-  return sock;
-
-fail:
-  zsock_close(sock);
-  return -1;
-}
-
 // This function probes for all greybus nodes.
 // Currently just using static IP for nodes.
 //
 // @return number of discovered nodes
-int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
+static int get_all_nodes(struct in6_addr *node_array,
+                         const size_t node_array_len) {
   if (node_array_len < 1) {
     return -1;
   }
@@ -186,42 +147,7 @@ int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len) {
   return 1;
 }
 
-void node_setup_entry(void *p1, void *p2, void *p3) {
-  struct sockaddr_in6 node_addr;
-  int ret;
-
-  while (k_msgq_get(&discovered_node_msgq, &node_addr.sin6_addr, K_FOREVER) ==
-         0) {
-    node_addr.sin6_family = AF_INET6;
-    node_addr.sin6_scope_id = 0;
-    node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
-
-    ret = connect_to_node((struct sockaddr *)&node_addr);
-    if (ret < 0) {
-      LOG_WRN("Failed to connect to node");
-      goto fail;
-    }
-
-    ret = node_table_add_cport_by_addr(&node_addr.sin6_addr, ret, 0);
-    if (ret < 0) {
-      LOG_WRN("Failed to add cport0 to node table");
-      goto fail;
-    }
-    LOG_DBG("Added Cport0");
-
-    ret = control_send_get_manifest_size_request(ret);
-    if (ret >= 0) {
-      LOG_DBG("Sent get manifest size request");
-    }
-
-    continue;
-
-  fail:
-    node_table_remove_node_by_addr(&node_addr.sin6_addr);
-  }
-}
-
-void node_discovery_entry(void *p1, void *p2, void *p3) {
+static void node_discovery_entry(void *p1, void *p2, void *p3) {
   int ret;
   struct in6_addr node_array[MAX_GREYBUS_NODES];
 
@@ -238,8 +164,8 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
         if (node_table_add_node(&node_array[i]) < 0) {
           LOG_WRN("Failed to add node");
         } else {
+          node_handler_setup_node_queue(&node_array[i], 0);
           LOG_INF("Added Greybus Node");
-          k_msgq_put(&discovered_node_msgq, &node_array[i], K_FOREVER);
         }
       }
     }
@@ -250,7 +176,7 @@ void node_discovery_entry(void *p1, void *p2, void *p3) {
   }
 }
 
-void serial_callback(const struct device *dev, void *user_data) {
+static void serial_callback(const struct device *dev, void *user_data) {
   char c;
 
   if (!uart_irq_update(uart_dev)) {
@@ -270,7 +196,7 @@ void serial_callback(const struct device *dev, void *user_data) {
   }
 }
 
-void print_uart(char *buf) {
+static void print_uart(char *buf) {
   int msg_len = strlen(buf);
 
   for (int i = 0; i < msg_len; i++) {
