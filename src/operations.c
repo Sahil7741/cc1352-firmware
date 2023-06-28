@@ -27,8 +27,6 @@ static void gb_operation_dealloc(struct gb_operation *op) {
   gb_message_dealloc(op->request);
   gb_message_dealloc(op->response);
 
-  sys_dlist_remove(&op->node);
-
   k_free(op);
 }
 
@@ -40,9 +38,7 @@ static void gb_operations_callback_entry(void *p1, void *p2, void *p3) {
       op->callback(op);
     }
 
-    k_mutex_lock(&gb_operations_mutex, K_FOREVER);
     gb_operation_dealloc(op);
-    k_mutex_unlock(&gb_operations_mutex);
   }
 }
 
@@ -96,6 +92,23 @@ static int gb_message_send(const struct gb_message *msg) {
   }
 
   return SUCCESS;
+}
+
+static void gb_operation_finish(struct gb_operation *op) {
+  sys_dlist_remove(&op->node);
+  k_msgq_put(&gb_operations_callback_msgq, &op, K_FOREVER);
+}
+
+static struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
+  struct gb_operation *op;
+
+  SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
+    if (op->operation_id == operation_id) {
+      k_mutex_unlock(&gb_operations_mutex);
+      return op;
+    }
+  }
+  return NULL;
 }
 
 static int gb_operation_send_request(struct gb_operation *op) {
@@ -232,24 +245,6 @@ early_exit:
   return ret;
 }
 
-void gb_operation_finish(struct gb_operation *op) {
-  k_msgq_put(&gb_operations_callback_msgq, &op, K_FOREVER);
-}
-
-struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
-  struct gb_operation *op;
-
-  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
-  SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
-    if (op->operation_id == operation_id) {
-      k_mutex_unlock(&gb_operations_mutex);
-      return op;
-    }
-  }
-  k_mutex_unlock(&gb_operations_mutex);
-  return NULL;
-}
-
 void gb_message_dealloc(struct gb_message *msg) {
   if (msg == NULL) {
     return;
@@ -288,4 +283,25 @@ size_t gb_operation_send_request_all(struct zsock_pollfd *fds, size_t fds_len) {
   k_mutex_unlock(&gb_operations_mutex);
 
   return count;
+}
+
+int gb_operation_set_response(struct gb_message *msg) {
+  struct gb_operation *op;
+  if (!gb_message_is_response(msg)) {
+    return -E_NOT_RESPONSE;
+  }
+
+  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
+  op = gb_operation_find_by_id(msg->header.id);
+  if (op == NULL || op->response_received) {
+    return -E_CLIENT_REQUEST;
+  }
+
+  op->response = msg;
+  op->response_received = true;
+  LOG_DBG("Operation with ID %u completed", msg->header.id);
+  gb_operation_finish(op);
+  k_mutex_unlock(&gb_operations_mutex);
+
+  return SUCCESS;
 }

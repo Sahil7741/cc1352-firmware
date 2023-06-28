@@ -153,23 +153,6 @@ void gb_operation_queue(struct gb_operation *);
 struct gb_message *gb_message_receive(int, bool *);
 
 /*
- * Mark a greybus operation as complete. Call the callback and deallocate the
- * resources.
- *
- * @param op: greybus operation.
- */
-void gb_operation_finish(struct gb_operation *);
-
-/*
- * Find the greybus operation by operation_id.
- *
- * @param operation id
- *
- * @return greybus operation if found, else return NULL.
- */
-struct gb_operation *gb_operation_find_by_id(uint16_t);
-
-/*
  * Deallocate a greybus message.
  *
  * @param pointer to the message to deallcate
@@ -184,5 +167,14 @@ void gb_message_dealloc(struct gb_message *);
  * @return number of opertations sent.
  */
 size_t gb_operation_send_request_all(struct zsock_pollfd *, size_t);
+
+/*
+ * Check if a received greybus message is a response to an operation.
+ *
+ * @param received message
+ *
+ * @return 0 in case of success. negative in case of error
+ */
+int gb_operation_set_response(struct gb_message *);
 
 #endif

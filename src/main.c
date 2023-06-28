@@ -57,7 +57,6 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
   size_t len = 0;
   size_t i;
   int ret;
-  struct gb_operation *op;
   struct gb_message *msg;
   bool peer_closed_flag = false;
 
@@ -92,19 +91,8 @@ void node_reader_entry(void *p1, void *p2, void *p3) {
         }
 
         // Handle if the msg is a response to an operation
-        if (gb_message_is_response(msg)) {
-          op = gb_operation_find_by_id(msg->header.id);
-          if (op == NULL || op->response_received) {
-            LOG_DBG("Orphan response");
-            gb_message_dealloc(msg);
-          } else {
-            op->response = msg;
-            op->response_received = true;
-            LOG_DBG("Operation with ID %u completed", msg->header.id);
-            gb_operation_finish(op);
-          }
-        } else {
-          // Handle if the msg it the request from node.
+        ret = gb_operation_set_response(msg);
+        if (ret < 0) {
           gb_message_dealloc(msg);
         }
       }

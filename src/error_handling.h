@@ -14,5 +14,7 @@
 #define E_UNINITIALIZED_CPORT 6
 #define E_SEND_HEADER 7
 #define E_SEND_PAYLOAD 8
+#define E_NOT_RESPONSE 9
+#define E_CLIENT_REQUEST 10
 
 #endif
