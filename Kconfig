@@ -1,42 +1,11 @@
 mainmenu "CC1352 GREYBUS Application"
 
-choice "BEAGLEPLAY_GREYBUS_LOG_LEVEL_CHOICE"
-	prompt "Max compiled-in log level for BEAGLEPLAY_GREYBUS"
-	default BEAGLEPLAY_GREYBUS_LOG_LEVEL_DEFAULT
-	depends on LOG
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL_OFF
-	bool "Off"
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL_ERR
-	bool "Error"
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL_WRN
-	bool "Warning"
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL_INF
-	bool "Info"
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL_DBG
-	bool "Debug"
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL_DEFAULT
-	bool "Default"
-
-endchoice
-
-config BEAGLEPLAY_GREYBUS_LOG_LEVEL
-	int
-	depends on LOG
-	default 0 if BEAGLEPLAY_GREYBUS_LOG_LEVEL_OFF
-	default 1 if BEAGLEPLAY_GREYBUS_LOG_LEVEL_ERR
-	default 2 if BEAGLEPLAY_GREYBUS_LOG_LEVEL_WRN
-	default 3 if BEAGLEPLAY_GREYBUS_LOG_LEVEL_INF
-	default 4 if BEAGLEPLAY_GREYBUS_LOG_LEVEL_DBG
-	default LOG_DEFAULT_LEVEL if BEAGLEPLAY_GREYBUS_LOG_LEVEL_DEFAULT
-
 config BEAGLEPLAY_GREYBUS_MAX_NODES
   int
   default 1
+
+module = BEAGLEPLAY_GREYBUS
+module-str = beagleplay_greybus
+source "subsys/logging/Kconfig.template.log_config"
 
 source "Kconfig.zephyr"
