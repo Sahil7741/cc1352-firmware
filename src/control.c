@@ -24,6 +24,10 @@ struct gb_control_get_manifest_response {
   uint8_t *data;
 } __packed;
 
+struct gb_control_conntected_request {
+  uint16_t cport_id;
+} __packed;
+
 static void gb_control_get_manifest_size_callback(struct gb_operation *op) {
   int ret;
 
@@ -117,4 +121,12 @@ int control_send_get_manifest_size_request(int sock) {
 int control_send_get_manifest_request(int sock) {
   return control_send_request(sock, NULL, 0, GB_CONTROL_TYPE_GET_MANIFEST,
                                    gb_control_get_manifest_callback);
+}
+
+int control_send_connected_request(int sock, uint16_t cport_id) {
+  struct gb_control_conntected_request req = {
+    .cport_id = cport_id
+  };
+
+  return control_send_request(sock, &req, sizeof(struct gb_control_conntected_request), GB_CONTROL_TYPE_CONNECTED, NULL);
 }
