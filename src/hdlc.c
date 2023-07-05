@@ -81,7 +81,7 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv) {
 static void hdlc_process_frame(struct hdlc_driver *drv) {
   if (drv->rx_buffer[0] == 0xEE) {
     LOG_HEXDUMP_ERR(drv->rx_buffer, 8, "HDLC ERROR");
-  } else if (drv->rx_buffer_len > 3) {
+  } else if (drv->rx_buffer_len > 3 && drv->crc == 0xf0b8) {
     uint8_t address = drv->rx_buffer[0];
     uint8_t ctrl = drv->rx_buffer[1];
 
@@ -186,7 +186,7 @@ int hdlc_block_submit(uint8_t *buffer, size_t buffer_len, uint8_t address,
 }
 
 int hdlc_init() {
-  hdlc_driver.crc = 0;
+  hdlc_driver.crc = 0xffff;
   hdlc_driver.send_seq = 0;
   hdlc_driver.rx_send_seq = 0;
   hdlc_driver.next_escaped = false;
