@@ -14,12 +14,14 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 struct hdlc_block {
   void *fifo_reserved;
-  uint8_t address;
-  uint8_t control;
+  uint8_t address; uint8_t control;
   uint8_t length;
   uint8_t buffer[];
 };
 
+/*
+ * Initialize internal HDLC stuff
+ */
 int hdlc_init();
 
 /*
@@ -29,5 +31,9 @@ int hdlc_init();
  * @param control
  */
 int hdlc_block_submit(uint8_t *, size_t, uint8_t, uint8_t);
+
+/*
+ */
+int hdlc_rx_submit();
 
 #endif
