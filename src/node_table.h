@@ -102,6 +102,14 @@ size_t node_table_get_all_cports(int *, size_t);
  */
 size_t node_table_get_all_cports_pollfd(struct zsock_pollfd *, size_t);
 
-int node_table_get_addr_by_cport0(int cport0, struct in6_addr *);
+/*
+ * Get node IPV6 address by CPort0
+ *
+ * @param cport0
+ * @param IPV6 address
+ *
+ * @return 0 in case of success. Neagaive in case of error
+ */
+int node_table_get_addr_by_cport0(int, struct in6_addr *);
 
 #endif

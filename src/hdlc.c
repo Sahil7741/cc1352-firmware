@@ -3,6 +3,9 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/mgmt/mcumgr/mgmt/mgmt.h>
+#include <zephyr/mgmt/mcumgr/transport/serial.h>
+#include <zephyr/mgmt/mcumgr/transport/smp.h>
 #include <zephyr/sys/crc.h>
 #include <zephyr/sys/ring_buffer.h>
 
@@ -26,6 +29,9 @@ K_WORK_DEFINE(hdlc_rx_work, hdlc_rx_handler);
 RING_BUF_DECLARE(hdlc_rx_ringbuf, HDLC_RX_BUF_SIZE);
 
 struct hdlc_driver {
+  struct mcumgr_serial_rx_ctxt smp_rx_ctx;
+  struct smp_transport smp_transport;
+
   uint16_t crc;
   bool next_escaped;
   uint8_t rx_send_seq;
@@ -68,32 +74,60 @@ static void block_out(struct hdlc_driver *drv, const struct hdlc_block *block) {
 
 static void hdlc_dealloc_block(struct hdlc_block *block) { k_free(block); }
 
-static void hdlc_process_greybus_frame(struct hdlc_driver *drv) {
+static void hdlc_process_greybus_frame(struct hdlc_driver *drv, void *buffer,
+                                       size_t buffer_len) {
   // Do something with hdlc information. Starts at hdlc->rx_buffer[3]
   // Can be variable length
   char temp[20];
-  size_t len = drv->rx_buffer_len - 4;
-  memcpy(temp, &drv->rx_buffer[2], len);
-  temp[len] = '\0';
+  memcpy(temp, buffer, buffer_len);
+  temp[buffer_len] = '\0';
   LOG_DBG("Got a Greybus Frame: %s", temp);
+}
+
+static void hdlc_process_mcumgr_frame(struct hdlc_driver *drv, void *buffer,
+                                      size_t buffer_len) {
+  struct net_buf *nb;
+  LOG_DBG("Got MCUmgr frame");
+
+  nb = mcumgr_serial_process_frag(&drv->smp_rx_ctx, buffer, buffer_len);
+
+  if (nb != NULL) {
+    LOG_DBG("Successfull in processing mcumgr framg");
+    smp_rx_req(&drv->smp_transport, nb);
+  }
+}
+
+static void hdlc_process_complete_frame(struct hdlc_driver *drv) {
+  uint8_t address = drv->rx_buffer[0];
+  size_t len = drv->rx_buffer_len - 4;
+  void *buffer = &drv->rx_buffer[2];
+
+  switch (address) {
+  case ADDRESS_GREYBUS:
+    hdlc_process_greybus_frame(drv, buffer, len);
+    break;
+  case ADDRESS_MCUMGR:
+    hdlc_process_mcumgr_frame(drv, buffer, len);
+    break;
+  case ADDRESS_DBG:
+    LOG_WRN("Ignore DBG Frame");
+    break;
+  default:
+    LOG_ERR("Dropped HDLC addr:%x ctrl:%x", address, drv->rx_buffer[1]);
+    LOG_HEXDUMP_DBG(drv->rx_buffer, drv->rx_buffer_len, "rx_buffer");
+  }
 }
 
 static void hdlc_process_frame(struct hdlc_driver *drv) {
   if (drv->rx_buffer[0] == 0xEE) {
     LOG_HEXDUMP_ERR(drv->rx_buffer, 8, "HDLC ERROR");
   } else if (drv->rx_buffer_len > 3 && drv->crc == 0xf0b8) {
-    uint8_t address = drv->rx_buffer[0];
     uint8_t ctrl = drv->rx_buffer[1];
 
     if ((ctrl & 1) == 0) {
       drv->rx_send_seq = (ctrl >> 5) & 0x07;
-    } else if (address == ADDRESS_GREYBUS) {
-      hdlc_process_greybus_frame(drv);
-    } else if (address == ADDRESS_DBG) {
-      LOG_WRN("Ignore DBG Frame");
     } else {
-      LOG_ERR("Dropped HDLC addr:%x ctrl:%x", address, ctrl);
-      LOG_HEXDUMP_DBG(drv->rx_buffer, drv->rx_buffer_len, "rx_buffer");
+      hdlc_process_complete_frame(drv);
     }
   } else {
     LOG_ERR("Dropped HDLC crc:%04x len:%d", drv->crc, drv->rx_buffer_len);
@@ -165,6 +199,25 @@ static void hdlc_rx_handler(struct k_work *work) {
   }
 }
 
+static int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len,
+                                uint8_t address, uint8_t control) {
+  size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
+  struct hdlc_block *block = k_malloc(block_size);
+
+  if (block == NULL) {
+    return -1;
+  }
+
+  block->length = buffer_len;
+  memcpy(block->buffer, buffer, buffer_len);
+  block->address = address;
+  block->control = control;
+
+  block_out(&hdlc_driver, block);
+
+  return block_size;
+}
+
 int hdlc_block_submit(uint8_t *buffer, size_t buffer_len, uint8_t address,
                       uint8_t control) {
   size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
@@ -185,14 +238,42 @@ int hdlc_block_submit(uint8_t *buffer, size_t buffer_len, uint8_t address,
   return block_size;
 }
 
+static int smp_hdlc_tx_cb(const void *data, int len) {
+  hdlc_block_send_sync(data, len, ADDRESS_MCUMGR, 0x03);
+  return 0;
+}
+
+static int smp_hdlc_tx_pkt(struct net_buf *nb) {
+  int rc;
+
+  rc = mcumgr_serial_tx_pkt(nb->data, nb->len, smp_hdlc_tx_cb);
+  smp_packet_free(nb);
+
+  LOG_DBG("SMP TX %d", rc);
+  return rc;
+}
+
+static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb) { return 256; }
+
 int hdlc_init() {
+  int rc;
+
   hdlc_driver.crc = 0xffff;
   hdlc_driver.send_seq = 0;
   hdlc_driver.rx_send_seq = 0;
   hdlc_driver.next_escaped = false;
   hdlc_driver.rx_buffer_len = 0;
 
-  return 1;
+  hdlc_driver.smp_transport.functions.output = smp_hdlc_tx_pkt;
+  hdlc_driver.smp_transport.functions.get_mtu = smp_hdlc_get_mtu;
+
+  rc = smp_transport_init(&hdlc_driver.smp_transport);
+  if (rc) {
+    LOG_ERR("Failed to init SMP Transport");
+    return -1;
+  }
+
+  return 0;
 }
 
 int hdlc_rx_submit() {
@@ -223,5 +304,5 @@ int hdlc_rx_submit() {
 
   k_work_submit(&hdlc_rx_work);
 
-  return 0;
+  return ret;
 }
