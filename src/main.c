@@ -5,6 +5,7 @@
  */
 
 #include "control.h"
+#include "hdlc.h"
 #include "node_handler.h"
 #include "node_table.h"
 #include "operations.h"
@@ -28,10 +29,6 @@
 #define NODE_POLL_TIMEOUT 500
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
-
-static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
-
-K_MSGQ_DEFINE(uart_msgq, sizeof(char), 10, 4);
 
 static void node_discovery_entry(void *, void *, void *);
 static void node_reader_entry(void *, void *, void *);
@@ -61,7 +58,7 @@ static void node_reader_entry(void *p1, void *p2, void *p3) {
       goto sleep_label;
     }
 
-    LOG_DBG("Polling %u sockets", len);
+    // LOG_DBG("Polling %u sockets", len);
     for (i = 0; i < len; ++i) {
       fds[i].events = ZSOCK_POLLIN;
     }
@@ -109,7 +106,7 @@ static void node_writer_entry(void *p1, void *p2, void *p3) {
       goto sleep_label;
     }
 
-    LOG_DBG("Polling %u sockets", len);
+    // LOG_DBG("Polling %u sockets", len);
     for (i = 0; i < len; ++i) {
       fds[i].events = ZSOCK_POLLOUT;
     }
@@ -121,7 +118,7 @@ static void node_writer_entry(void *p1, void *p2, void *p3) {
 
     /// Send all pending requests
     ret = gb_operation_send_request_all(fds, len);
-    LOG_DBG("Written %d operations", ret);
+    // LOG_DBG("Written %d operations", ret);
 
   sleep_label:
     // Not sure why this is needed.
@@ -155,7 +152,7 @@ static void node_discovery_entry(void *p1, void *p2, void *p3) {
       LOG_WRN("Failed to get greybus nodes");
       continue;
     }
-    LOG_INF("Discoverd %u nodes", ret);
+    // LOG_INF("Discoverd %u nodes", ret);
 
     for (size_t i = 0; i < ret; ++i) {
       if (!node_table_is_active_by_addr(&node_array[i])) {
@@ -169,49 +166,25 @@ static void node_discovery_entry(void *p1, void *p2, void *p3) {
     }
 
     // Put the thread to sleep for an interval
-    LOG_DBG("Going to sleep");
+    // LOG_DBG("Going to sleep");
     k_msleep(NODE_DISCOVERY_INTERVAL);
   }
 }
 
 static void serial_callback(const struct device *dev, void *user_data) {
-  char c;
-
-  if (!uart_irq_update(uart_dev)) {
-    return;
-  }
-
-  if (!uart_irq_rx_ready(uart_dev)) {
-    return;
-  }
-
-  while (uart_fifo_read(uart_dev, &c, 1) == 1) {
-    if (c == '1' || c == '2') {
-      k_msgq_put(&uart_msgq, &c, K_NO_WAIT);
-    } else {
-      LOG_DBG("Invalid Input: %u", c);
-    }
-  }
-}
-
-static void print_uart(char *buf) {
-  int msg_len = strlen(buf);
-
-  for (int i = 0; i < msg_len; i++) {
-    uart_poll_out(uart_dev, buf[i]);
-  }
+  hdlc_rx_submit();
 }
 
 void main(void) {
   LOG_INF("Starting BeaglePlay Greybus");
   int ret;
 
-  char tx;
-
   if (!device_is_ready(uart_dev)) {
     LOG_ERR("UART device not found!");
     return;
   }
+
+  hdlc_init();
 
   ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
   if (ret < 0) {
@@ -227,7 +200,5 @@ void main(void) {
 
   uart_irq_rx_enable(uart_dev);
 
-  while (k_msgq_get(&uart_msgq, &tx, K_FOREVER) == 0) {
-    LOG_DBG("Pressed: %c", tx);
-  }
+  k_sleep(K_FOREVER);
 }

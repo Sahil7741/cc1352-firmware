@@ -18,7 +18,7 @@
 static void hdlc_tx_handler(struct k_work *);
 static void hdlc_rx_handler(struct k_work *);
 
-LOG_MODULE_DECLARE(experiment, 4);
+LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 K_FIFO_DEFINE(hdlc_tx_queue);
 K_WORK_DEFINE(hdlc_tx_work, hdlc_tx_handler);
@@ -72,7 +72,7 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv) {
   // Do something with hdlc information. Starts at hdlc->rx_buffer[3]
   // Can be variable length
   char temp[20];
-  size_t len = drv->rx_buffer_len - 2;
+  size_t len = drv->rx_buffer_len - 4;
   memcpy(temp, &drv->rx_buffer[2], len);
   temp[len] = '\0';
   LOG_DBG("Got a Greybus Frame: %s", temp);
@@ -87,7 +87,7 @@ static void hdlc_process_frame(struct hdlc_driver *drv) {
 
     if ((ctrl & 1) == 0) {
       drv->rx_send_seq = (ctrl >> 5) & 0x07;
-    } else if (address == ADDRESS_GREYBUS && drv->rx_buffer_len > 9) {
+    } else if (address == ADDRESS_GREYBUS) {
       hdlc_process_greybus_frame(drv);
     } else if (address == ADDRESS_DBG) {
       LOG_WRN("Ignore DBG Frame");
@@ -167,8 +167,8 @@ static void hdlc_rx_handler(struct k_work *work) {
 
 int hdlc_block_submit(uint8_t *buffer, size_t buffer_len, uint8_t address,
                       uint8_t control) {
-  struct hdlc_block *block =
-      k_malloc(sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len);
+  size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
+  struct hdlc_block *block = k_malloc(block_size);
 
   if (block == NULL) {
     return -1;
@@ -182,7 +182,7 @@ int hdlc_block_submit(uint8_t *buffer, size_t buffer_len, uint8_t address,
   k_fifo_put(&hdlc_tx_queue, block);
   k_work_submit(&hdlc_tx_work);
 
-  return 0;
+  return block_size;
 }
 
 int hdlc_init() {
