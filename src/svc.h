@@ -10,6 +10,8 @@
  *
  * @return 0 if successful, else error.
  */
-int svc_send_ping(int);
+int svc_send_ping();
+
+int svc_send_version();
 
 #endif

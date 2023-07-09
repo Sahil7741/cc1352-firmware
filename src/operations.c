@@ -1,6 +1,7 @@
 #include "operations.h"
 #include "error_handling.h"
 #include "greybus_protocol.h"
+#include "hdlc.h"
 #include "zephyr/kernel.h"
 #include <limits.h>
 #include <stdint.h>
@@ -18,6 +19,8 @@ static void callback_work_handler(struct k_work *);
 static atomic_t operation_id_counter = ATOMIC_INIT(1);
 static sys_dlist_t greybus_operations_list =
     SYS_DLIST_STATIC_INIT(&greybus_operations_list);
+static sys_dlist_t greybus_operations_ap_list =
+    SYS_DLIST_STATIC_INIT(&greybus_operations_ap_list);
 static sys_dlist_t greybus_operations_callback_list =
     SYS_DLIST_STATIC_INIT(&greybus_operations_callback_list);
 
@@ -113,12 +116,11 @@ static void gb_operation_finish(struct gb_operation *op) {
   k_work_submit(&callback_work);
 }
 
-static struct gb_operation *gb_operation_find_by_id(uint16_t operation_id) {
+static struct gb_operation *gb_operation_find_by_id(uint16_t operation_id, sys_dlist_t *list) {
   struct gb_operation *op;
 
-  SYS_DLIST_FOR_EACH_CONTAINER(&greybus_operations_list, op, node) {
+  SYS_DLIST_FOR_EACH_CONTAINER(list, op, node) {
     if (op->operation_id == operation_id) {
-      k_mutex_unlock(&gb_operations_mutex);
       return op;
     }
   }
@@ -180,6 +182,10 @@ void gb_operation_queue(struct gb_operation *op) {
   k_mutex_unlock(&gb_operations_mutex);
 }
 
+void gb_operation_ap_queue(struct gb_operation *op) {
+  sys_dlist_append(&greybus_operations_ap_list, &op->node);
+}
+
 struct gb_message *gb_message_receive(int sock, bool *flag) {
   int ret;
   struct gb_message *msg = k_malloc(sizeof(struct gb_message));
@@ -226,7 +232,6 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
                                greybus_operation_callback_t callback) {
   int ret;
 
-  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
   op->request = k_malloc(sizeof(struct gb_message));
   if (op->request == NULL) {
     LOG_WRN("Failed to allocate Greybus request message");
@@ -255,7 +260,6 @@ int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
   ret = SUCCESS;
 
 early_exit:
-  k_mutex_unlock(&gb_operations_mutex);
   return ret;
 }
 
@@ -306,7 +310,7 @@ int gb_operation_set_response(struct gb_message *msg) {
   }
 
   k_mutex_lock(&gb_operations_mutex, K_FOREVER);
-  op = gb_operation_find_by_id(msg->header.id);
+  op = gb_operation_find_by_id(msg->header.id, &greybus_operations_list);
   if (op == NULL || op->response_received) {
     return -E_CLIENT_REQUEST;
   }
@@ -319,3 +323,35 @@ int gb_operation_set_response(struct gb_message *msg) {
 
   return SUCCESS;
 }
+
+int gb_message_hdlc_send(const struct gb_message *msg) {
+  char buffer[50];
+
+  memcpy(buffer, &msg->header, sizeof(struct gb_operation_msg_hdr));
+  memcpy(&buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload, msg->payload_size);
+
+  hdlc_block_send_sync(buffer, msg->header.size, ADDRESS_GREYBUS, 0x03);
+
+  return SUCCESS;
+}
+
+int gb_operation_set_response_hdlc(struct gb_message *msg) {
+  struct gb_operation *op;
+  if (!gb_message_is_response(msg)) {
+    return -E_NOT_RESPONSE;
+  }
+
+  op = gb_operation_find_by_id(msg->header.id, &greybus_operations_ap_list);
+  if (op == NULL || op->response_received) {
+    return -E_CLIENT_REQUEST;
+  }
+
+  op->response = msg;
+  op->response_received = true;
+  LOG_DBG("HDLC Operation with ID %u completed", msg->header.id);
+  gb_operation_finish(op);
+
+  return SUCCESS;
+}
+
+

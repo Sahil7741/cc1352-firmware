@@ -4,7 +4,7 @@
 #include <zephyr/logging/log_backend_std.h>
 
 static int hdlc_uart_out(uint8_t *data, size_t length, void *ctx) {
-  hdlc_block_submit(data, length, ADDRESS_DBG, 0x03);
+  hdlc_block_send_sync(data, length, ADDRESS_DBG, 0x03);
   return length;
 }
 

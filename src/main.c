@@ -175,6 +175,15 @@ static void serial_callback(const struct device *dev, void *user_data) {
   hdlc_rx_submit();
 }
 
+static void gb_ap_msg_cb(struct gb_message *msg) {
+  int ret = gb_operation_set_response_hdlc(msg);
+  if (ret) {
+    LOG_ERR("Geybus Opertation Set response failed %d", ret);
+  } else {
+    LOG_DBG("Greybus Operation Set successfully");
+  }
+}
+
 void main(void) {
   LOG_INF("Starting BeaglePlay Greybus");
   int ret;
@@ -184,7 +193,7 @@ void main(void) {
     return;
   }
 
-  hdlc_init();
+  hdlc_init(gb_ap_msg_cb);
 
   ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
   if (ret < 0) {
@@ -199,6 +208,8 @@ void main(void) {
   }
 
   uart_irq_rx_enable(uart_dev);
+
+  svc_send_version();
 
   k_sleep(K_FOREVER);
 }

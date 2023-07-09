@@ -16,7 +16,7 @@
 #define HDLC_ESC_FRAME 0x5E
 #define HDLC_ESC_ESC 0x5D
 
-#define HDLC_BUFFER_SIZE 512
+#define HDLC_MAX_BLOCK_SIZE 512
 
 static void hdlc_tx_handler(struct k_work *);
 static void hdlc_rx_handler(struct k_work *);
@@ -32,12 +32,14 @@ struct hdlc_driver {
   struct mcumgr_serial_rx_ctxt smp_rx_ctx;
   struct smp_transport smp_transport;
 
+  greybus_message_callback gb_cb;
+
   uint16_t crc;
   bool next_escaped;
   uint8_t rx_send_seq;
   uint8_t send_seq;
-  uint8_t rx_buffer_len;
-  uint8_t rx_buffer[HDLC_BUFFER_SIZE];
+  uint16_t rx_buffer_len;
+  uint8_t rx_buffer[HDLC_MAX_BLOCK_SIZE];
 } hdlc_driver;
 
 static void uart_poll_out_crc(const struct device *dev, uint8_t byte,
@@ -74,14 +76,44 @@ static void block_out(struct hdlc_driver *drv, const struct hdlc_block *block) {
 
 static void hdlc_dealloc_block(struct hdlc_block *block) { k_free(block); }
 
-static void hdlc_process_greybus_frame(struct hdlc_driver *drv, void *buffer,
-                                       size_t buffer_len) {
+static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
+                                       const char *buffer, size_t buffer_len) {
   // Do something with hdlc information. Starts at hdlc->rx_buffer[3]
   // Can be variable length
-  char temp[20];
-  memcpy(temp, buffer, buffer_len);
-  temp[buffer_len] = '\0';
-  LOG_DBG("Got a Greybus Frame: %s", temp);
+  LOG_DBG("Got a Greybus Frame");
+
+  struct gb_message *msg = k_malloc(sizeof(struct gb_message));
+  if (msg == NULL) {
+    LOG_ERR("Failed to allocate greybus message");
+    return;
+  }
+
+  memcpy(&msg->header, buffer, sizeof(struct gb_operation_msg_hdr));
+
+  if (gb_message_is_response(msg) && msg->header.status != GB_OP_SUCCESS) {
+    LOG_ERR("Greybus operation %u failed", msg->header.id);
+    goto free_msg;
+  }
+
+  if (msg->header.size > buffer_len) {
+    LOG_ERR("Greybus Message size is greater than received buffer.");
+    goto free_msg;
+  }
+
+  msg->payload_size = msg->header.size - sizeof(struct gb_operation_msg_hdr);
+  msg->payload = k_malloc(msg->payload_size);
+  if (msg->payload == NULL) {
+    LOG_ERR("Failed to allocate message payload");
+    goto free_msg;
+  }
+  memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)],
+         msg->payload_size);
+  drv->gb_cb(msg);
+
+  return;
+
+free_msg:
+  k_free(msg);
 }
 
 static void hdlc_process_mcumgr_frame(struct hdlc_driver *drv, void *buffer,
@@ -138,7 +170,7 @@ static void hdlc_process_frame(struct hdlc_driver *drv) {
 }
 
 static int hdlc_save_byte(struct hdlc_driver *drv, uint8_t byte) {
-  if (drv->rx_buffer_len >= HDLC_BUFFER_SIZE) {
+  if (drv->rx_buffer_len >= HDLC_MAX_BLOCK_SIZE) {
     LOG_ERR("HDLC RX Buffer Overflow");
     drv->crc = 0xffff;
     drv->rx_buffer_len = 0;
@@ -199,8 +231,8 @@ static void hdlc_rx_handler(struct k_work *work) {
   }
 }
 
-static int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len,
-                                uint8_t address, uint8_t control) {
+int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len,
+                         uint8_t address, uint8_t control) {
   size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
   struct hdlc_block *block = k_malloc(block_size);
 
@@ -255,7 +287,7 @@ static int smp_hdlc_tx_pkt(struct net_buf *nb) {
 
 static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb) { return 256; }
 
-int hdlc_init() {
+int hdlc_init(greybus_message_callback cb) {
   int rc;
 
   hdlc_driver.crc = 0xffff;
@@ -263,6 +295,8 @@ int hdlc_init() {
   hdlc_driver.rx_send_seq = 0;
   hdlc_driver.next_escaped = false;
   hdlc_driver.rx_buffer_len = 0;
+
+  hdlc_driver.gb_cb = cb;
 
   hdlc_driver.smp_transport.functions.output = smp_hdlc_tx_pkt;
   hdlc_driver.smp_transport.functions.get_mtu = smp_hdlc_get_mtu;

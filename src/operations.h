@@ -177,4 +177,8 @@ size_t gb_operation_send_request_all(struct zsock_pollfd *, size_t);
  */
 int gb_operation_set_response(struct gb_message *);
 
+void gb_operation_ap_queue(struct gb_operation *);
+int gb_message_hdlc_send(const struct gb_message *);
+int gb_operation_set_response_hdlc(struct gb_message *);
+
 #endif
