@@ -16,7 +16,7 @@
 #define HDLC_ESC_FRAME 0x5E
 #define HDLC_ESC_ESC 0x5D
 
-#define HDLC_BUFFER_SIZE 140
+#define HDLC_BUFFER_SIZE 512
 
 static void hdlc_tx_handler(struct k_work *);
 static void hdlc_rx_handler(struct k_work *);
