@@ -64,37 +64,6 @@ static void callback_work_handler(struct k_work *work) {
   }
 }
 
-static int write_data(int sock, const void *data, size_t len) {
-  int ret;
-  int transmitted = 0;
-  while (transmitted < len) {
-    ret = zsock_send(sock, transmitted + (char *)data, len - transmitted, 0);
-    if (ret < 0) {
-      LOG_ERR("Failed to transmit data");
-      return -1;
-    }
-    transmitted += ret;
-  }
-  return transmitted;
-}
-
-static int read_data(int sock, void *data, size_t len) {
-  int ret;
-  int recieved = 0;
-  while (recieved < len) {
-    ret = zsock_recv(sock, recieved + (char *)data, len - recieved, 0);
-    if (ret < 0) {
-      LOG_ERR("Failed to recieve data");
-      return -1;
-    } else if (ret == 0) {
-      // Socket was closed by peer
-      return 0;
-    }
-    recieved += ret;
-  }
-  return recieved;
-}
-
 static void gb_operation_finish(struct gb_operation *op) {
   sys_dlist_remove(&op->node);
 
