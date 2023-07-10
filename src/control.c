@@ -40,7 +40,7 @@ static void gb_control_get_manifest_size_callback(struct gb_operation *op) {
       op->response->payload;
   LOG_DBG("Manifest Size: %u bytes", response->manifest_size);
 
-  ret = control_send_get_manifest_request(op->sock);
+  // ret = control_send_get_manifest_request(op->sock);
   if (ret >= 0) {
     LOG_DBG("Sent control get manifest request");
   }
@@ -63,7 +63,7 @@ static void gb_control_get_manifest_callback(struct gb_operation *op) {
     max_cport = MAX(max_cport, cport->id);
   }
 
-  ret = node_table_get_addr_by_cport0(op->sock, &addr);
+  // ret = node_table_get_addr_by_cport0(op->sock, &addr);
   if (ret < 0) {
     goto early_exit;
   }
@@ -89,7 +89,7 @@ static int control_send_request(int sock, void *payload, size_t payload_len,
                                 uint8_t request_type,
                                 greybus_operation_callback_t callback) {
   int ret;
-  struct gb_operation *op = gb_operation_alloc(sock, false);
+  struct gb_operation *op = gb_operation_alloc(false);
   if (op == NULL) {
     return -E_NOT_FOUND;
   }

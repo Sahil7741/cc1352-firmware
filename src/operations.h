@@ -32,10 +32,11 @@ typedef void (*greybus_operation_callback_t)(struct gb_operation *);
  * @param payload_size: size of payload in bytes
  */
 struct gb_message {
+  void *fifo_reserved;
   struct gb_operation *operation;
   struct gb_operation_msg_hdr header;
-  void *payload;
   size_t payload_size;
+  uint8_t payload[];
 };
 
 /*
@@ -50,13 +51,40 @@ struct gb_message {
  * @param node: operation dlist node.
  */
 struct gb_operation {
-  int sock;
+  // int sock;
   uint16_t operation_id;
   bool request_sent;
   bool response_received;
   struct gb_message *request;
   struct gb_message *response;
   greybus_operation_callback_t callback;
+  sys_dnode_t node;
+};
+
+/*
+ * Controller for each greybus interface
+ *
+ * @param read: a non-blocking read function
+ * @param write: a non-blocking write function. The ownership of message is
+ * trasnferred.
+ * @param ctrl_data: private controller data
+ */
+struct gb_controller {
+  struct gb_message *(*read)(struct gb_controller *, uint16_t);
+  int (*write)(struct gb_controller *, struct gb_message *, uint16_t);
+  void *ctrl_data;
+};
+
+struct gb_interface {
+  uint8_t id;
+  struct gb_controller controller;
+};
+
+struct gb_connection {
+  struct gb_interface *inf_ap;
+  struct gb_interface *inf_peer;
+  uint16_t ap_cport_id;
+  uint16_t peer_cport_id;
   sys_dnode_t node;
 };
 
@@ -85,15 +113,8 @@ static inline bool gb_message_is_response(const struct gb_message *msg) {
   return msg->header.type & GB_TYPE_RESPONSE_FLAG;
 }
 
-/*
- * Get socket for the operation.
- *
- * @param op: greybus operation
- *
- * @return socket for this operation. -1 if socket has not been allocated yet.
- */
-static inline int gb_operation_socket(const struct gb_operation *op) {
-  return op->sock;
+static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr) {
+  return hdr->type & GB_TYPE_RESPONSE_FLAG;
 }
 
 /*
@@ -117,7 +138,7 @@ static inline bool gb_operation_request_sent(const struct gb_operation *op) {
  *
  * @return heap allocated gb_operation
  */
-struct gb_operation *gb_operation_alloc(int, bool);
+struct gb_operation *gb_operation_alloc(bool);
 
 /*
  * Allocate a request on a pre-allocated greybus operation
@@ -180,5 +201,9 @@ int gb_operation_set_response(struct gb_message *);
 void gb_operation_ap_queue(struct gb_operation *);
 int gb_message_hdlc_send(const struct gb_message *);
 int gb_operation_set_response_hdlc(struct gb_message *);
+struct gb_operation *gb_svc_operation_find_by_id(uint16_t);
+struct gb_connection *create_connection(struct gb_interface *,
+                                        struct gb_interface *, uint16_t,
+                                        uint16_t);
 
 #endif

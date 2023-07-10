@@ -1,6 +1,9 @@
 #ifndef SVC_H
 #define SVC_H
 
+#include "operations.h"
+#define SVC_INF_ID 0
+
 /*
  * Create CONTROL_TYPE_PING greybus operation and queue it for sending.
  *
@@ -13,5 +16,7 @@
 int svc_send_ping();
 
 int svc_send_version();
+
+struct gb_interface *svc_init();
 
 #endif

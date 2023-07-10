@@ -1,4 +1,6 @@
 #include "hdlc.h"
+#include "ap.h"
+#include "greybus_protocol.h"
 #include <string.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
@@ -82,33 +84,32 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
   // Can be variable length
   LOG_DBG("Got a Greybus Frame");
 
-  struct gb_message *msg = k_malloc(sizeof(struct gb_message));
-  if (msg == NULL) {
-    LOG_ERR("Failed to allocate greybus message");
-    return;
-  }
+  struct gb_operation_msg_hdr hdr;
+  struct gb_message *msg;
+  size_t payload_size;
 
-  memcpy(&msg->header, buffer, sizeof(struct gb_operation_msg_hdr));
-
-  if (gb_message_is_response(msg) && msg->header.status != GB_OP_SUCCESS) {
+  memcpy(&hdr, buffer, sizeof(struct gb_operation_msg_hdr));
+  if (gb_hdr_is_response(&hdr) && hdr.status != GB_OP_SUCCESS) {
     LOG_ERR("Greybus operation %u failed", msg->header.id);
     goto free_msg;
   }
 
-  if (msg->header.size > buffer_len) {
+  if (hdr.size > buffer_len) {
     LOG_ERR("Greybus Message size is greater than received buffer.");
     goto free_msg;
   }
 
-  msg->payload_size = msg->header.size - sizeof(struct gb_operation_msg_hdr);
-  msg->payload = k_malloc(msg->payload_size);
-  if (msg->payload == NULL) {
-    LOG_ERR("Failed to allocate message payload");
-    goto free_msg;
+  payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
+  msg = k_malloc(sizeof(struct gb_message) + payload_size);
+  if (msg == NULL) {
+    LOG_ERR("Failed to allocate greybus message");
+    return;
   }
+  msg->payload_size = payload_size;
+  memcpy(&msg->header, &hdr, sizeof(struct gb_operation_msg_hdr));
   memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)],
          msg->payload_size);
-  drv->gb_cb(msg);
+  ap_rx_submit(msg);
 
   return;
 
