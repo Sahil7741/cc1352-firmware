@@ -5,7 +5,6 @@
  */
 
 #include "ap.h"
-#include "control.h"
 #include "hdlc.h"
 #include "node_handler.h"
 #include "node_table.h"
@@ -33,8 +32,6 @@
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static void node_discovery_entry(void *, void *, void *);
-static void node_reader_entry(void *, void *, void *);
-static void node_writer_entry(void *, void *, void *);
 static void apbridge_entry(void *, void *, void *);
 
 static sys_dlist_t gb_connections_list =
@@ -43,12 +40,6 @@ static sys_dlist_t gb_connections_list =
 // Thread responsible for beagleconnect node discovery.
 // K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
 //                 0, 0);
-// Thread responsible for reading from greybus nodes
-// K_THREAD_DEFINE(node_reader, 2048, node_reader_entry, NULL, NULL, NULL, 5, 0,
-//                 0);
-// Thread responsible for writing to greybus nodes
-// K_THREAD_DEFINE(node_writer, 2048, node_writer_entry, NULL, NULL, NULL, 5, 0,
-//                 0);
 
 K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 5, 0,
                 0);
@@ -75,88 +66,6 @@ static void apbridge_entry(void *p1, void *p2, void *p3) {
       k_yield();
     }
     k_sleep(K_MSEC(100));
-  }
-}
-
-static void node_reader_entry(void *p1, void *p2, void *p3) {
-  struct zsock_pollfd fds[MAX_NUMBER_OF_SOCKETS];
-  size_t len = 0;
-  size_t i;
-  int ret;
-  struct gb_message *msg;
-  bool peer_closed_flag = false;
-
-  while (1) {
-    len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
-    if (len <= 0) {
-      goto sleep_label;
-    }
-
-    // LOG_DBG("Polling %u sockets", len);
-    for (i = 0; i < len; ++i) {
-      fds[i].events = ZSOCK_POLLIN;
-    }
-
-    ret = zsock_poll(fds, len, NODE_POLL_TIMEOUT);
-    if (ret <= 0) {
-      goto sleep_label;
-    }
-
-    // Read any available responses
-    for (i = 0; i < len; ++i) {
-      if (fds[i].revents & ZSOCK_POLLIN) {
-        msg = gb_message_receive(fds[i].fd, &peer_closed_flag);
-        if (msg == NULL) {
-          if (peer_closed_flag) {
-            peer_closed_flag = false;
-            node_table_remove_cport_by_socket(fds[i].fd);
-          }
-          continue;
-        }
-
-        // Handle if the msg is a response to an operation
-        ret = gb_operation_set_response(msg);
-        if (ret < 0) {
-          gb_message_dealloc(msg);
-        }
-      }
-    }
-
-  sleep_label:
-    // Not sure why this is needed.
-    k_sleep(K_MSEC(NODE_WRITER_INTERVAL));
-  }
-}
-
-static void node_writer_entry(void *p1, void *p2, void *p3) {
-  struct zsock_pollfd fds[MAX_NUMBER_OF_SOCKETS];
-  size_t len = 0;
-  size_t i;
-  int ret;
-
-  while (1) {
-    len = node_table_get_all_cports_pollfd(fds, MAX_NUMBER_OF_SOCKETS);
-    if (len <= 0) {
-      goto sleep_label;
-    }
-
-    // LOG_DBG("Polling %u sockets", len);
-    for (i = 0; i < len; ++i) {
-      fds[i].events = ZSOCK_POLLOUT;
-    }
-
-    ret = zsock_poll(fds, len, NODE_POLL_TIMEOUT);
-    if (ret <= 0) {
-      goto sleep_label;
-    }
-
-    /// Send all pending requests
-    ret = gb_operation_send_request_all(fds, len);
-    // LOG_DBG("Written %d operations", ret);
-
-  sleep_label:
-    // Not sure why this is needed.
-    k_sleep(K_MSEC(NODE_WRITER_INTERVAL));
   }
 }
 
@@ -209,15 +118,6 @@ static void serial_callback(const struct device *dev, void *user_data) {
   hdlc_rx_submit();
 }
 
-static void gb_ap_msg_cb(struct gb_message *msg) {
-  int ret = gb_operation_set_response_hdlc(msg);
-  if (ret) {
-    LOG_ERR("Geybus Opertation Set response failed %d", ret);
-  } else {
-    LOG_DBG("Greybus Operation Set successfully");
-  }
-}
-
 void main(void) {
   LOG_INF("Starting BeaglePlay Greybus");
   int ret;
@@ -227,11 +127,11 @@ void main(void) {
     return;
   }
 
-  hdlc_init(gb_ap_msg_cb);
+  hdlc_init();
   struct gb_interface *ap = ap_init();
   struct gb_interface *svc = svc_init();
 
-  struct gb_connection *conn = create_connection(ap, svc, 0, 0);
+  struct gb_connection *conn = gb_create_connection(ap, svc, 0, 0);
   sys_dlist_append(&gb_connections_list, &conn->node);
 
   ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);

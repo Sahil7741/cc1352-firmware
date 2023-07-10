@@ -20,12 +20,8 @@ static void callback_work_handler(struct k_work *);
 static atomic_t operation_id_counter = ATOMIC_INIT(1);
 static sys_dlist_t greybus_operations_list =
     SYS_DLIST_STATIC_INIT(&greybus_operations_list);
-static sys_dlist_t greybus_operations_ap_list =
-    SYS_DLIST_STATIC_INIT(&greybus_operations_ap_list);
 static sys_dlist_t greybus_operations_callback_list =
     SYS_DLIST_STATIC_INIT(&greybus_operations_callback_list);
-static sys_dlist_t greybus_connection_list =
-    SYS_DLIST_STATIC_INIT(&greybus_connection_list);
 
 K_WORK_DEFINE(callback_work, callback_work_handler);
 
@@ -99,24 +95,6 @@ static int read_data(int sock, void *data, size_t len) {
   return recieved;
 }
 
-static int gb_message_send(const struct gb_message *msg) {
-  int ret;
-  struct gb_operation *op = msg->operation;
-
-  // ret = write_data(op->sock, &msg->header, sizeof(struct
-  // gb_operation_msg_hdr));
-  if (ret < 0) {
-    return -E_SEND_HEADER;
-  }
-
-  // ret = write_data(op->sock, msg->payload, msg->payload_size);
-  if (ret < 0) {
-    return -E_SEND_PAYLOAD;
-  }
-
-  return SUCCESS;
-}
-
 static void gb_operation_finish(struct gb_operation *op) {
   sys_dlist_remove(&op->node);
 
@@ -137,29 +115,6 @@ static struct gb_operation *gb_operation_find_by_id(uint16_t operation_id,
     }
   }
   return NULL;
-}
-
-static int gb_operation_send_request(struct gb_operation *op) {
-  if (gb_operation_request_sent(op)) {
-    return -E_ALREADY_SENT;
-  }
-
-  if (op->request == NULL) {
-    return -E_NULL_REQUEST;
-  }
-
-  int ret = gb_message_send(op->request);
-  if (ret < 0) {
-    return ret;
-  }
-
-  op->request_sent = true;
-
-  if (gb_operation_is_unidirectional(op)) {
-    gb_operation_finish(op);
-  }
-
-  return SUCCESS;
 }
 
 struct gb_operation *gb_operation_alloc(bool is_oneshot) {
@@ -192,51 +147,6 @@ void gb_operation_queue(struct gb_operation *op) {
   sys_dlist_append(&greybus_operations_list, &op->node);
   k_mutex_unlock(&gb_operations_mutex);
 }
-
-void gb_operation_ap_queue(struct gb_operation *op) {
-  sys_dlist_append(&greybus_operations_ap_list, &op->node);
-}
-
-// struct gb_message *gb_message_receive(int sock, bool *flag) {
-//   int ret;
-//   struct gb_message *msg = k_malloc(sizeof(struct gb_message));
-//   if (msg == NULL) {
-//     LOG_ERR("Failed to allocate greybus message");
-//     goto early_exit;
-//   }
-//
-//   ret = read_data(sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
-//   if (ret <= 0) {
-//     *flag = ret == 0;
-//     goto free_msg;
-//   }
-//
-//   if (gb_message_is_response(msg) && msg->header.status != GB_OP_SUCCESS) {
-//     goto free_msg;
-//   }
-//
-//   msg->payload_size = msg->header.size - sizeof(struct gb_operation_msg_hdr);
-//   msg->payload = k_malloc(msg->payload_size);
-//   if (msg->payload == NULL) {
-//     LOG_ERR("Failed to allocate message payload");
-//     goto free_msg;
-//   }
-//
-//   ret = read_data(sock, msg->payload, msg->payload_size);
-//   if (ret <= 0) {
-//     *flag = ret == 0;
-//     goto free_payload;
-//   }
-//
-//   return msg;
-//
-// free_payload:
-//   k_free(msg->payload);
-// free_msg:
-//   k_free(msg);
-// early_exit:
-//   return NULL;
-// }
 
 int gb_operation_request_alloc(struct gb_operation *op, const void *payload,
                                size_t payload_len, uint8_t request_type,
@@ -276,37 +186,6 @@ void gb_message_dealloc(struct gb_message *msg) {
   k_free(msg);
 }
 
-size_t gb_operation_send_request_all(struct zsock_pollfd *fds, size_t fds_len) {
-  size_t i, count = 0;
-  struct gb_operation *op, *op_safe;
-  int ret;
-
-  k_mutex_lock(&gb_operations_mutex, K_FOREVER);
-  SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&greybus_operations_list, op, op_safe,
-                                    node) {
-    if (gb_operation_request_sent(op)) {
-      continue;
-    }
-
-    for (i = 0; i < fds_len; ++i) {
-      if (gb_operation_socket(op) == fds[i].fd &&
-          fds[i].revents & ZSOCK_POLLOUT) {
-        ret = gb_operation_send_request(op);
-        if (ret == 0) {
-          LOG_DBG("Request %u sent", op->operation_id);
-          count++;
-        } else {
-          LOG_WRN("Error in sending request %d", ret);
-        }
-        break;
-      }
-    }
-  }
-  k_mutex_unlock(&gb_operations_mutex);
-
-  return count;
-}
-
 int gb_operation_set_response(struct gb_message *msg) {
   struct gb_operation *op;
 
@@ -338,30 +217,7 @@ int gb_message_hdlc_send(const struct gb_message *msg) {
   return SUCCESS;
 }
 
-int gb_operation_set_response_hdlc(struct gb_message *msg) {
-  struct gb_operation *op;
-  if (!gb_message_is_response(msg)) {
-    return -E_NOT_RESPONSE;
-  }
-
-  op = gb_operation_find_by_id(msg->header.id, &greybus_operations_ap_list);
-  if (op == NULL || op->response_received) {
-    return -E_CLIENT_REQUEST;
-  }
-
-  op->response = msg;
-  op->response_received = true;
-  LOG_DBG("HDLC Operation with ID %u completed", msg->header.id);
-  gb_operation_finish(op);
-
-  return SUCCESS;
-}
-
-struct gb_operation *gb_svc_operation_find_by_id(uint16_t id) {
-  return gb_operation_find_by_id(id, &greybus_operations_list);
-}
-
-struct gb_connection *create_connection(struct gb_interface *inf_ap,
+struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
                                         struct gb_interface *inf_peer,
                                         uint16_t ap_cport,
                                         uint16_t peer_cport) {

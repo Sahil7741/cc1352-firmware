@@ -34,8 +34,6 @@ struct hdlc_driver {
   struct mcumgr_serial_rx_ctxt smp_rx_ctx;
   struct smp_transport smp_transport;
 
-  greybus_message_callback gb_cb;
-
   uint16_t crc;
   bool next_escaped;
   uint8_t rx_send_seq;
@@ -90,13 +88,13 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
 
   memcpy(&hdr, buffer, sizeof(struct gb_operation_msg_hdr));
   if (gb_hdr_is_response(&hdr) && hdr.status != GB_OP_SUCCESS) {
-    LOG_ERR("Greybus operation %u failed", msg->header.id);
-    goto free_msg;
+    LOG_ERR("Greybus operation %u failed", hdr.id);
+    return;
   }
 
   if (hdr.size > buffer_len) {
     LOG_ERR("Greybus Message size is greater than received buffer.");
-    goto free_msg;
+    return;
   }
 
   payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
@@ -112,9 +110,6 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
   ap_rx_submit(msg);
 
   return;
-
-free_msg:
-  k_free(msg);
 }
 
 static void hdlc_process_mcumgr_frame(struct hdlc_driver *drv, void *buffer,
@@ -288,7 +283,7 @@ static int smp_hdlc_tx_pkt(struct net_buf *nb) {
 
 static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb) { return 256; }
 
-int hdlc_init(greybus_message_callback cb) {
+int hdlc_init() {
   int rc;
 
   hdlc_driver.crc = 0xffff;
@@ -296,8 +291,6 @@ int hdlc_init(greybus_message_callback cb) {
   hdlc_driver.rx_send_seq = 0;
   hdlc_driver.next_escaped = false;
   hdlc_driver.rx_buffer_len = 0;
-
-  hdlc_driver.gb_cb = cb;
 
   hdlc_driver.smp_transport.functions.output = smp_hdlc_tx_pkt;
   hdlc_driver.smp_transport.functions.get_mtu = smp_hdlc_get_mtu;

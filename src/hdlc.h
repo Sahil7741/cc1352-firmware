@@ -28,12 +28,10 @@ struct hdlc_block {
  *
  * @return 0 if successful. Negative in case of error.
  */
-int hdlc_init(greybus_message_callback);
+int hdlc_init();
 
 /*
- * Submit an HDLC block to be transmitted.
- *
- * Note: This is async
+ * Submit an HDLC block to be transmitted. This is async
  *
  * @param buffer
  * @param buffer_length
@@ -45,12 +43,22 @@ int hdlc_init(greybus_message_callback);
 int hdlc_block_submit(uint8_t *, size_t, uint8_t, uint8_t);
 
 /*
+ * Submit an HDLC Block syncronously
+ *
+ * @param buffer
+ * @param buffer_length
+ * @param address
+ * @param control
+ *
+ * @return block size (> 0) if successful. Negative in case of error
+ */
+int hdlc_block_send_sync(const uint8_t *, size_t, uint8_t, uint8_t);
+
+/*
  * Read from UART. Mostly called by RX interrupt
  *
  * @return number of bytes read. Negative in case of error
  */
 int hdlc_rx_submit();
-
-int hdlc_block_send_sync(const uint8_t *, size_t, uint8_t, uint8_t);
 
 #endif

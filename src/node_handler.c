@@ -1,5 +1,4 @@
 #include "node_handler.h"
-#include "control.h"
 #include "node_table.h"
 #include "svc.h"
 #include "zephyr/kernel.h"
@@ -76,17 +75,7 @@ void node_setup(struct in6_addr *node_ip_addr, uint8_t cport_num) {
   }
   LOG_DBG("Added Cport %u", cport_num);
 
-  if (cport_num == 0) {
-    ret = control_send_get_manifest_size_request(ret);
-    if (ret >= 0) {
-      LOG_DBG("Sent get manifest size request");
-    }
-  } else {
-    ret = svc_send_ping(ret);
-    if (ret >= 0) {
-      LOG_DBG("Sent ping request");
-    }
-  }
+  // Create an Interface
 
   return;
 
