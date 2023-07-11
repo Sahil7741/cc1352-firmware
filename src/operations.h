@@ -182,4 +182,6 @@ struct gb_connection *gb_create_connection(struct gb_interface *,
                                            struct gb_interface *, uint16_t,
                                            uint16_t);
 
+struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t, bool);
+
 #endif

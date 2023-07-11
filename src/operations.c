@@ -187,9 +187,9 @@ int gb_message_hdlc_send(const struct gb_message *msg) {
 }
 
 struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
-                                        struct gb_interface *inf_peer,
-                                        uint16_t ap_cport,
-                                        uint16_t peer_cport) {
+                                           struct gb_interface *inf_peer,
+                                           uint16_t ap_cport,
+                                           uint16_t peer_cport) {
   struct gb_connection *conn = k_malloc(sizeof(struct gb_connection));
   if (conn == NULL) {
     LOG_ERR("Failed to create Greybus connection");
@@ -202,4 +202,33 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
   conn->ap_cport_id = ap_cport;
 
   return conn;
+}
+
+static uint16_t new_operation_id() {
+  atomic_val_t temp = atomic_inc(&operation_id_counter);
+  if (temp == UINT16_MAX) {
+    atomic_set(&operation_id_counter, 1);
+  }
+  return temp;
+}
+
+struct gb_message *gb_message_request_alloc(const void *payload,
+                                            size_t payload_len,
+                                            uint8_t request_type, bool is_oneshot) {
+  struct gb_message *msg;
+
+  msg = k_malloc(sizeof(struct gb_message) + payload_len);
+  if (msg == NULL) {
+    LOG_WRN("Failed to allocate Greybus request message");
+    return NULL;
+  }
+
+  msg->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
+  msg->header.id = is_oneshot ? 0 : new_operation_id();
+  msg->header.type = request_type;
+  msg->header.status = 0;
+  msg->payload_size = payload_len;
+  memcpy(msg->payload, payload, msg->payload_size);
+
+  return msg;
 }

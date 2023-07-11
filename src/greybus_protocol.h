@@ -25,6 +25,7 @@
 
 /* Greybus SVC request types */
 #define GB_SVC_TYPE_PING 0x13
+#define GB_SVC_TYPE_PROTOCOL_VERSION_RESPONSE 0x81
 
 /*
  * All operation messages (both requests and responses) begin with
