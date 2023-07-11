@@ -13,16 +13,24 @@ struct gb_common_version_request {
   uint8_t minor;
 } __packed;
 
-static void gb_common_version_callback(struct gb_message *msg) {
+static void svc_version_response_handler(struct gb_message *msg) {
   struct gb_common_version_request *response =
       (struct gb_common_version_request *)msg->payload;
   LOG_DBG("SVC Protocol Version %u.%u", response->major, response->minor);
 }
 
+static void svc_ping_response_handler(struct gb_message *msg) {
+  ARG_UNUSED(msg);
+  LOG_DBG("Received Pong");
+}
+
 static void gb_handle_msg(struct gb_message *msg) {
   switch (msg->header.type) {
   case GB_SVC_TYPE_PROTOCOL_VERSION_RESPONSE:
-    gb_common_version_callback(msg);
+    svc_version_response_handler(msg);
+    break;
+  case GB_SVC_TYPE_PING_RESPONSE:
+    svc_ping_response_handler(msg);
     break;
   default:
     LOG_WRN("Handling SVC operation Type %u not supported yet",
@@ -55,10 +63,6 @@ static struct gb_interface intf = {.id = SVC_INF_ID,
                                                   .write = svc_inf_write,
                                                   .ctrl_data = &svc_ctrl_data}};
 
-static void svc_ping_callback(struct gb_operation *op) {
-  LOG_DBG("Received Pong");
-}
-
 static int control_send_request(void *payload, size_t payload_len,
                                 uint8_t request_type) {
   struct gb_message *msg;
@@ -76,10 +80,12 @@ int svc_send_version() {
   struct gb_common_version_request req = {.major = GB_SVC_VERSION_MAJOR,
                                           .minor = GB_SVC_VERSION_MINOR};
   return control_send_request(&req, sizeof(struct gb_common_version_request),
-                              GB_COMMON_TYPE_PROTOCOL_VERSION);
+                              GB_SVC_TYPE_PROTOCOL_VERSION_REQUEST);
 }
 
-int svc_send_ping() { return control_send_request(NULL, 0, GB_SVC_TYPE_PING); }
+int svc_send_ping() {
+  return control_send_request(NULL, 0, GB_SVC_TYPE_PING_REQUEST);
+}
 
 struct gb_interface *svc_init() {
   k_fifo_init(&svc_ctrl_data.pending_read);

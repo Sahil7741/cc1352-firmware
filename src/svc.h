@@ -6,18 +6,25 @@
 #define SVC_INF_ID 0
 
 /*
- * Create CONTROL_TYPE_PING greybus operation and queue it for sending.
+ * Create CONTROL_TYPE_PING greybus message and queue it for sending.
  *
  * Note: This does not immediately send the request.
- *
- * @param sock: Socket for the cport
  *
  * @return 0 if successful, else error.
  */
 int svc_send_ping();
 
+/*
+ * Create SVC_TYPE_VERSION greybus message and queue it for sending.
+ *
+ * @return 0 if successful, else error.
+ */
 int svc_send_version();
 
+/*
+ * Initialize SVC Interface. Should be called before sending any greybus
+ * request.
+ */
 struct gb_interface *svc_init();
 
 #endif

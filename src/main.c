@@ -51,14 +51,10 @@ static void apbridge_entry(void *p1, void *p2, void *p3) {
   while (1) {
     // Go through all connections
     SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
-      LOG_DBG("Start Reading from AP");
       msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
       if (msg != NULL)  {
-        LOG_DBG("Start Writing by Peer");
         conn->inf_peer->controller.write(&conn->inf_peer->controller, msg, conn->peer_cport_id);
-        LOG_DBG("Successful Writing by Peer");
       }
-      LOG_DBG("Start Reading from Peer");
       msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
       if(msg != NULL) {
         conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
