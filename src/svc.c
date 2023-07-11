@@ -2,6 +2,7 @@
 #include "ap.h"
 #include "greybus_protocol.h"
 #include "operations.h"
+#include <zephyr/sys/atomic.h>
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -10,6 +11,8 @@
 #define ENDO_ID 0x4755
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
+
+ATOMIC_DEFINE(svc_is_read_flag, 1);
 
 struct svc_control_data {
   struct k_fifo pending_read;
@@ -119,6 +122,7 @@ static void svc_ping_response_handler(struct gb_message *msg) {
 
 static void svc_hello_response_handler(struct gb_message *msg) {
   LOG_DBG("Hello Response Success");
+  atomic_set_bit(svc_is_read_flag, 0);
 }
 
 static void svc_empty_request_handler(struct gb_message *msg) {
@@ -201,4 +205,8 @@ static struct gb_interface intf = {.id = SVC_INF_ID,
 struct gb_interface *svc_init() {
   k_fifo_init(&svc_ctrl_data.pending_read);
   return &intf;
+}
+
+bool svc_is_ready() {
+  return atomic_test_bit(svc_is_read_flag, 0);
 }

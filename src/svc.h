@@ -27,4 +27,10 @@ int svc_send_version();
  */
 struct gb_interface *svc_init();
 
+/*
+ * Check if SVC is ready. This mostly means if SVC Hello was successfuly
+ * executed.
+ */
+bool svc_is_ready();
+
 #endif
