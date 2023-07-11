@@ -80,8 +80,6 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
                                        const char *buffer, size_t buffer_len) {
   // Do something with hdlc information. Starts at hdlc->rx_buffer[3]
   // Can be variable length
-  LOG_DBG("Got a Greybus Frame");
-
   struct gb_operation_msg_hdr hdr;
   struct gb_message *msg;
   size_t payload_size;

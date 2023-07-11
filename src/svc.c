@@ -28,6 +28,41 @@ struct gb_svc_hello_request {
   uint8_t interface_id;
 } __packed;
 
+struct gb_svc_pwrmon_rail_count_get_response {
+  uint8_t rail_count;
+} __packed;
+
+struct gb_svc_l2_timer_cfg {
+  uint16_t tsb_fc0_protection_timeout;
+  uint16_t tsb_tc0_replay_timeout;
+  uint16_t tsb_afc0_req_timeout;
+  uint16_t tsb_fc1_protection_timeout;
+  uint16_t tsb_tc1_replay_timeout;
+  uint16_t tsb_afc1_req_timeout;
+  uint16_t reserved_for_tc2[3];
+  uint16_t reserved_for_tc3[3];
+} __packed;
+
+struct gb_svc_intf_set_pwrm_request {
+  uint8_t intf_id;
+  uint8_t hs_series;
+  uint8_t tx_mode;
+  uint8_t tx_gear;
+  uint8_t tx_nlanes;
+  uint8_t tx_amplitude;
+  uint8_t tx_hs_equalizer;
+  uint8_t rx_mode;
+  uint8_t rx_gear;
+  uint8_t rx_nlanes;
+  uint8_t flags;
+  uint32_t quirks;
+  struct gb_svc_l2_timer_cfg local_l2timerdata, remote_l2timerdata;
+} __packed;
+
+struct gb_svc_intf_set_pwrm_response {
+  uint8_t result_code;
+} __packed;
+
 static int control_send_request(void *payload, size_t payload_len,
                                 uint8_t request_type) {
   struct gb_message *msg;
@@ -59,6 +94,17 @@ int svc_send_hello() {
                               GB_SVC_TYPE_HELLO_REQUEST);
 }
 
+static void svc_response_helper(struct gb_message *msg, const void *payload,
+                                size_t payload_len) {
+  struct gb_message *resp = gb_message_response_alloc(
+      payload, payload_len, msg->header.type, msg->header.id);
+  if (resp == NULL) {
+    LOG_DBG("Failed to allocate response for %X", msg->header.type);
+    return;
+  }
+  k_fifo_put(&svc_ctrl_data.pending_read, resp);
+}
+
 static void svc_version_response_handler(struct gb_message *msg) {
   struct gb_svc_version_request *response =
       (struct gb_svc_version_request *)msg->payload;
@@ -76,13 +122,30 @@ static void svc_hello_response_handler(struct gb_message *msg) {
 }
 
 static void svc_empty_request_handler(struct gb_message *msg) {
-  struct gb_message *resp =
-      gb_message_response_alloc(NULL, 0, msg->header.type, msg->header.id);
-  if (resp == NULL) {
-    LOG_DBG("Failed to allocate response for %X", msg->header.type);
-    return;
-  }
-  k_fifo_put(&svc_ctrl_data.pending_read, resp);
+  svc_response_helper(msg, NULL, 0);
+}
+
+static void svc_pwrm_get_rail_count_handler(struct gb_message *msg) {
+  struct gb_svc_pwrmon_rail_count_get_response req = {.rail_count = 0};
+  svc_response_helper(msg, &req,
+                      sizeof(struct gb_svc_pwrmon_rail_count_get_response));
+}
+
+static void svc_intf_set_pwrm_handler(struct gb_message *msg) {
+  uint8_t tx_mode, rx_mode;
+  struct gb_svc_intf_set_pwrm_response resp = {
+    .result_code = GB_SVC_SETPWRM_PWR_LOCAL
+  };
+  struct gb_svc_intf_set_pwrm_request *req = (struct gb_svc_intf_set_pwrm_request *)msg->payload;
+  tx_mode = req->tx_mode;
+  rx_mode = req->rx_mode;
+
+  if (tx_mode == GB_SVC_UNIPRO_HIBERNATE_MODE &&
+      rx_mode == GB_SVC_UNIPRO_HIBERNATE_MODE) {
+    resp.result_code = GB_SVC_SETPWRM_PWR_OK;
+  } 
+
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_set_pwrm_response));
 }
 
 static void gb_handle_msg(struct gb_message *msg) {
@@ -92,6 +155,12 @@ static void gb_handle_msg(struct gb_message *msg) {
   case GB_SVC_TYPE_ROUTE_DESTROY_REQUEST:
   case GB_SVC_TYPE_PING_REQUEST:
     svc_empty_request_handler(msg);
+    break;
+  case GB_SVC_TYPE_PWRMON_RAIL_COUNT_GET_REQUEST:
+    svc_pwrm_get_rail_count_handler(msg);
+    break;
+  case GB_SVC_TYPE_INTF_SET_PWRM_REQUEST:
+    svc_intf_set_pwrm_handler(msg);
     break;
   case GB_SVC_TYPE_PROTOCOL_VERSION_RESPONSE:
     svc_version_response_handler(msg);
