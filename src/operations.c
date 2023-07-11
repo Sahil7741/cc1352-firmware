@@ -31,7 +31,7 @@ void gb_message_dealloc(struct gb_message *msg) {
 }
 
 int gb_message_hdlc_send(const struct gb_message *msg) {
-  char buffer[50];
+  char buffer[HDLC_MAX_BLOCK_SIZE];
 
   memcpy(buffer, &msg->header, sizeof(struct gb_operation_msg_hdr));
   memcpy(&buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload,

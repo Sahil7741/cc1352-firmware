@@ -61,7 +61,7 @@ static void apbridge_entry(void *p1, void *p2, void *p3) {
       }
       k_yield();
     }
-    k_sleep(K_MSEC(100));
+    k_sleep(K_MSEC(200));
   }
 }
 

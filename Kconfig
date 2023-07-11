@@ -4,6 +4,10 @@ config BEAGLEPLAY_GREYBUS_MAX_NODES
   int
   default 1
 
+config BEAGLEPLAY_HDLC_MAX_BLOCK_SIZE
+  int
+  default 140
+
 module = BEAGLEPLAY_GREYBUS
 module-str = beagleplay_greybus
 source "subsys/logging/Kconfig.template.log_config"

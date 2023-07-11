@@ -149,6 +149,8 @@ static void svc_intf_set_pwrm_handler(struct gb_message *msg) {
 }
 
 static void gb_handle_msg(struct gb_message *msg) {
+  LOG_DBG("Process SVC Operation %X", msg->header.type);
+
   switch (msg->header.type) {
   case GB_SVC_TYPE_INTF_DEVICE_ID_REQUEST:
   case GB_SVC_TYPE_ROUTE_CREATE_REQUEST:

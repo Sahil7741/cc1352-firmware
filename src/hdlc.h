@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <zephyr/device.h>
 
+#define HDLC_MAX_BLOCK_SIZE CONFIG_BEAGLEPLAY_HDLC_MAX_BLOCK_SIZE
+
 #define ADDRESS_GREYBUS 0x01
 #define ADDRESS_DBG 0x02
 #define ADDRESS_MCUMGR 0x03
