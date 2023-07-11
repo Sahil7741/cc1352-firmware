@@ -60,10 +60,10 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
   return conn;
 }
 
-struct gb_message *gb_message_request_alloc(const void *payload,
-                                            size_t payload_len,
-                                            uint8_t request_type,
-                                            bool is_oneshot) {
+static struct gb_message *gb_message_alloc(const void *payload,
+                                           size_t payload_len,
+                                           uint8_t message_type,
+                                           uint16_t operation_id) {
   struct gb_message *msg;
 
   msg = k_malloc(sizeof(struct gb_message) + payload_len);
@@ -73,11 +73,27 @@ struct gb_message *gb_message_request_alloc(const void *payload,
   }
 
   msg->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
-  msg->header.id = is_oneshot ? 0 : new_operation_id();
-  msg->header.type = request_type;
+  msg->header.id = operation_id;
+  msg->header.type = message_type;
   msg->header.status = 0;
   msg->payload_size = payload_len;
   memcpy(msg->payload, payload, msg->payload_size);
 
   return msg;
+}
+
+struct gb_message *gb_message_request_alloc(const void *payload,
+                                            size_t payload_len,
+                                            uint8_t request_type,
+                                            bool is_oneshot) {
+  uint16_t operation_id = is_oneshot ? 0 : new_operation_id();
+  return gb_message_alloc(payload, payload_len, request_type, operation_id);
+}
+
+struct gb_message *gb_message_response_alloc(const void *payload,
+                                             size_t payload_len,
+                                             uint8_t request_type,
+                                             uint16_t operation_id) {
+  return gb_message_alloc(payload, payload_len, OP_RESPONSE | request_type,
+                          operation_id);
 }

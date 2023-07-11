@@ -71,12 +71,28 @@ static void svc_ping_response_handler(struct gb_message *msg) {
   LOG_DBG("Received Pong");
 }
 
-static void svc_hello_response(struct gb_message *msg) {
+static void svc_hello_response_handler(struct gb_message *msg) {
   LOG_DBG("Hello Response Success");
+}
+
+static void svc_empty_request_handler(struct gb_message *msg) {
+  struct gb_message *resp =
+      gb_message_response_alloc(NULL, 0, msg->header.type, msg->header.id);
+  if (resp == NULL) {
+    LOG_DBG("Failed to allocate response for %X", msg->header.type);
+    return;
+  }
+  k_fifo_put(&svc_ctrl_data.pending_read, resp);
 }
 
 static void gb_handle_msg(struct gb_message *msg) {
   switch (msg->header.type) {
+  case GB_SVC_TYPE_INTF_DEVICE_ID_REQUEST:
+  case GB_SVC_TYPE_ROUTE_CREATE_REQUEST:
+  case GB_SVC_TYPE_ROUTE_DESTROY_REQUEST:
+  case GB_SVC_TYPE_PING_REQUEST:
+    svc_empty_request_handler(msg);
+    break;
   case GB_SVC_TYPE_PROTOCOL_VERSION_RESPONSE:
     svc_version_response_handler(msg);
     break;
@@ -84,7 +100,7 @@ static void gb_handle_msg(struct gb_message *msg) {
     svc_ping_response_handler(msg);
     break;
   case GB_SVC_TYPE_HELLO_RESPONSE:
-    svc_hello_response(msg);
+    svc_hello_response_handler(msg);
     break;
   default:
     LOG_WRN("Handling SVC operation Type %X not supported yet",

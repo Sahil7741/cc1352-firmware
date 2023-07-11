@@ -158,4 +158,17 @@ struct gb_connection *gb_create_connection(struct gb_interface *,
 struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t,
                                             bool);
 
+/*
+ * Allocate a greybus response message
+ *
+ * @param Payload
+ * @param Payload len
+ * @param Request Type
+ * @param Operation ID
+ *
+ * @return greybus message allocated on heap. Null in case of errro
+ */
+struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t,
+                                             uint16_t);
+
 #endif
