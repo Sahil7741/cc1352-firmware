@@ -20,6 +20,10 @@ struct svc_control_data {
 
 static struct svc_control_data svc_ctrl_data;
 
+struct gb_svc_intf_vsys_response {
+  uint8_t result_code;
+} __packed;
+
 struct gb_svc_module_inserted_request {
   uint8_t primary_intf_id;
   uint8_t intf_count;
@@ -153,6 +157,18 @@ static void svc_intf_set_pwrm_handler(struct gb_message *msg) {
   svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_set_pwrm_response));
 }
 
+static void svc_intf_vsys_enable_handler(struct gb_message *msg) {
+  struct gb_svc_intf_vsys_response resp = {.result_code = GB_SVC_INTF_VSYS_OK};
+
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_vsys_response));
+}
+
+static void svc_intf_vsys_disable_handler(struct gb_message *msg) {
+  struct gb_svc_intf_vsys_response resp = {.result_code = GB_SVC_INTF_VSYS_OK};
+
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_vsys_response));
+}
+
 static void gb_handle_msg(struct gb_message *msg) {
   LOG_DBG("Process SVC Operation %X", msg->header.type);
 
@@ -162,6 +178,12 @@ static void gb_handle_msg(struct gb_message *msg) {
   case GB_SVC_TYPE_ROUTE_DESTROY_REQUEST:
   case GB_SVC_TYPE_PING_REQUEST:
     svc_empty_request_handler(msg);
+    break;
+  case GB_SVC_TYPE_INTF_VSYS_ENABLE_REQUEST:
+    svc_intf_vsys_enable_handler(msg);
+    break;
+  case GB_SVC_TYPE_INTF_VSYS_DISABLE_REQUEST:
+    svc_intf_vsys_disable_handler(msg);
     break;
   case GB_SVC_TYPE_PWRMON_RAIL_COUNT_GET_REQUEST:
     svc_pwrm_get_rail_count_handler(msg);
