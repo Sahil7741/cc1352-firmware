@@ -85,6 +85,17 @@ static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr) {
 }
 
 /*
+ * Check if the greybus message header is a successful.
+ *
+ * @param hdr: greybus header
+ *
+ * @return true if message is successful, else false.
+ */
+static inline bool gb_hdr_is_success(const struct gb_operation_msg_hdr *hdr) {
+  return hdr->status == 0x00;
+}
+
+/*
  * Check if the greybus message is a response.
  *
  * @param msg: greybus message
@@ -93,6 +104,17 @@ static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr) {
  */
 static inline bool gb_message_is_response(const struct gb_message *msg) {
   return gb_hdr_is_response(&msg->header);
+}
+
+/*
+ * Check if the greybus message is a successful.
+ *
+ * @param msg: greybus message
+ *
+ * @return true if message is successful, else false.
+ */
+static inline bool gb_message_is_success(const struct gb_message *msg) {
+  return gb_hdr_is_success(&msg->header);
 }
 
 /*
