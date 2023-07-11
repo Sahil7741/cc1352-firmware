@@ -37,11 +37,14 @@
 #define GB_SVC_TYPE_INTF_SET_PWRM_REQUEST 0x10
 #define GB_SVC_TYPE_INTF_SET_PWRM_RESPONSE                                     \
   OP_RESPONSE | GB_SVC_TYPE_INTF_SET_PWRM_REQUEST
+#define GB_SVC_TYPE_MODULE_INSERTED_REQUEST 0x1f
+#define GB_SVC_TYPE_MODULE_INSERTED_RESPONSE                                   \
+  OP_RESPONSE | GB_SVC_TYPE_MODULE_INSERTED_REQUEST
 
 #define GB_SVC_UNIPRO_HIBERNATE_MODE 0x11
 
-#define GB_SVC_SETPWRM_PWR_OK           0x00
-#define GB_SVC_SETPWRM_PWR_LOCAL        0x01
+#define GB_SVC_SETPWRM_PWR_OK 0x00
+#define GB_SVC_SETPWRM_PWR_LOCAL 0x01
 
 /*
  * All operation messages (both requests and responses) begin with

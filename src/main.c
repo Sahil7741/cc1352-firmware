@@ -6,10 +6,11 @@
 
 #include "ap.h"
 #include "hdlc.h"
-#include "node_handler.h"
-#include "node_table.h"
+// #include "node_handler.h"
+// #include "node_table.h"
 #include "operations.h"
 #include "svc.h"
+#include "node.h"
 #include <zephyr/sys/dlist.h>
 #include <stdbool.h>
 #include <zephyr/drivers/uart.h>
@@ -24,10 +25,6 @@
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
-#define MAX_NUMBER_OF_SOCKETS CONFIG_NET_SOCKETS_POLL_MAX
-#define NODE_READER_INTERVAL 500
-#define NODE_WRITER_INTERVAL 500
-#define NODE_POLL_TIMEOUT 500
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -38,8 +35,8 @@ static sys_dlist_t gb_connections_list =
     SYS_DLIST_STATIC_INIT(&gb_connections_list);
 
 // Thread responsible for beagleconnect node discovery.
-// K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
-//                 0, 0);
+K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
+                0, 0);
 
 K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 5, 0,
                 0);
@@ -84,6 +81,12 @@ static int get_all_nodes(struct in6_addr *node_array,
 static void node_discovery_entry(void *p1, void *p2, void *p3) {
   int ret;
   struct in6_addr node_array[MAX_GREYBUS_NODES];
+  struct gb_interface *intf;
+
+  // Wait until SVC is ready
+  while(!svc_is_ready()) {
+    k_sleep(K_MSEC(1000));
+  }
 
   while (1) {
     ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
@@ -94,13 +97,10 @@ static void node_discovery_entry(void *p1, void *p2, void *p3) {
     // LOG_INF("Discoverd %u nodes", ret);
 
     for (size_t i = 0; i < ret; ++i) {
-      if (!node_table_is_active_by_addr(&node_array[i])) {
-        if (node_table_add_node(&node_array[i]) < 0) {
-          LOG_WRN("Failed to add node");
-        } else {
-          node_handler_setup_node_queue(&node_array[i], 0);
-          LOG_INF("Added Greybus Node");
-        }
+      intf = node_find_by_addr(&node_array[i]);
+      if (intf == NULL) {
+        intf = node_create_interface(&node_array[i]);
+        svc_send_module_inserted(intf->id);
       }
     }
 

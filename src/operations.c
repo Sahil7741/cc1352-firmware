@@ -12,12 +12,24 @@
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-static atomic_t operation_id_counter = ATOMIC_INIT(1);
+#define OPERATION_ID_START 1
+#define INTERFACE_ID_START 2
+
+static atomic_t operation_id_counter = ATOMIC_INIT(OPERATION_ID_START);
+static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
 
 static uint16_t new_operation_id() {
   atomic_val_t temp = atomic_inc(&operation_id_counter);
   if (temp == UINT16_MAX) {
-    atomic_set(&operation_id_counter, 1);
+    atomic_set(&operation_id_counter, OPERATION_ID_START);
+  }
+  return temp;
+}
+
+static uint8_t new_interface_id() {
+  atomic_val_t temp = atomic_inc(&interface_id_counter);
+  if (temp == UINT8_MAX) {
+    atomic_set(&interface_id_counter, INTERFACE_ID_START);
   }
   return temp;
 }
@@ -96,4 +108,25 @@ struct gb_message *gb_message_response_alloc(const void *payload,
                                              uint16_t operation_id) {
   return gb_message_alloc(payload, payload_len, OP_RESPONSE | request_type,
                           operation_id);
+}
+
+struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
+                                        gb_controller_write_callback_t write_cb,
+                                        void *ctrl_data) {
+  struct gb_interface *intf = k_malloc(sizeof(struct gb_interface));
+  if (intf == NULL) {
+    return NULL;
+  }
+
+  intf->id = new_interface_id();
+  intf->controller.read = read_cb;
+  intf->controller.write = write_cb;
+  intf->controller.ctrl_data = ctrl_data;
+  sys_dnode_init(&intf->node);
+
+  return intf;
+}
+
+void gb_interface_dealloc(struct gb_interface *intf) {
+  k_free(intf);
 }

@@ -17,6 +17,13 @@
 #define E_NULL_REQUEST 1
 #define E_ALREADY_SENT 2
 
+struct gb_controller;
+
+typedef struct gb_message *(*gb_controller_read_callback_t)(
+    struct gb_controller *, uint16_t);
+typedef int (*gb_controller_write_callback_t)(struct gb_controller *,
+                                              struct gb_message *, uint16_t);
+
 /*
  * Struct to represent greybus message. This is a variable sized type.
  *
@@ -41,8 +48,8 @@ struct gb_message {
  * @param ctrl_data: private controller data
  */
 struct gb_controller {
-  struct gb_message *(*read)(struct gb_controller *, uint16_t);
-  int (*write)(struct gb_controller *, struct gb_message *, uint16_t);
+  gb_controller_read_callback_t read;
+  gb_controller_write_callback_t write;
   void *ctrl_data;
 };
 
@@ -55,6 +62,7 @@ struct gb_controller {
 struct gb_interface {
   uint8_t id;
   struct gb_controller controller;
+  sys_dnode_t node;
 };
 
 /*
@@ -170,5 +178,10 @@ struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t,
  */
 struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t,
                                              uint16_t);
+
+struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t,
+                                        gb_controller_write_callback_t, void *);
+
+void gb_interface_dealloc(struct gb_interface *);
 
 #endif

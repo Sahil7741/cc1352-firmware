@@ -2,11 +2,11 @@
 #include "ap.h"
 #include "greybus_protocol.h"
 #include "operations.h"
-#include <zephyr/sys/atomic.h>
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/atomic.h>
 
 #define ENDO_ID 0x4755
 
@@ -19,6 +19,12 @@ struct svc_control_data {
 };
 
 static struct svc_control_data svc_ctrl_data;
+
+struct gb_svc_module_inserted_request {
+  uint8_t primary_intf_id;
+  uint8_t intf_count;
+  uint16_t flags;
+} __packed;
 
 struct gb_svc_version_request {
   uint8_t major;
@@ -115,11 +121,6 @@ static void svc_version_response_handler(struct gb_message *msg) {
   svc_send_hello();
 }
 
-static void svc_ping_response_handler(struct gb_message *msg) {
-  ARG_UNUSED(msg);
-  LOG_DBG("Received Pong");
-}
-
 static void svc_hello_response_handler(struct gb_message *msg) {
   LOG_DBG("Hello Response Success");
   atomic_set_bit(svc_is_read_flag, 0);
@@ -137,17 +138,17 @@ static void svc_pwrm_get_rail_count_handler(struct gb_message *msg) {
 
 static void svc_intf_set_pwrm_handler(struct gb_message *msg) {
   uint8_t tx_mode, rx_mode;
-  struct gb_svc_intf_set_pwrm_response resp = {
-    .result_code = GB_SVC_SETPWRM_PWR_LOCAL
-  };
-  struct gb_svc_intf_set_pwrm_request *req = (struct gb_svc_intf_set_pwrm_request *)msg->payload;
+  struct gb_svc_intf_set_pwrm_response resp = {.result_code =
+                                                   GB_SVC_SETPWRM_PWR_LOCAL};
+  struct gb_svc_intf_set_pwrm_request *req =
+      (struct gb_svc_intf_set_pwrm_request *)msg->payload;
   tx_mode = req->tx_mode;
   rx_mode = req->rx_mode;
 
   if (tx_mode == GB_SVC_UNIPRO_HIBERNATE_MODE &&
       rx_mode == GB_SVC_UNIPRO_HIBERNATE_MODE) {
     resp.result_code = GB_SVC_SETPWRM_PWR_OK;
-  } 
+  }
 
   svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_set_pwrm_response));
 }
@@ -172,10 +173,13 @@ static void gb_handle_msg(struct gb_message *msg) {
     svc_version_response_handler(msg);
     break;
   case GB_SVC_TYPE_PING_RESPONSE:
-    svc_ping_response_handler(msg);
+    LOG_DBG("Received Pong");
     break;
   case GB_SVC_TYPE_HELLO_RESPONSE:
     svc_hello_response_handler(msg);
+    break;
+  case GB_SVC_TYPE_MODULE_INSERTED_RESPONSE:
+    LOG_DBG("Successful Module Inserted Response");
     break;
   default:
     LOG_WRN("Handling SVC operation Type %X not supported yet",
@@ -207,6 +211,13 @@ struct gb_interface *svc_init() {
   return &intf;
 }
 
-bool svc_is_ready() {
-  return atomic_test_bit(svc_is_read_flag, 0);
+bool svc_is_ready() { return atomic_test_bit(svc_is_read_flag, 0); }
+
+int svc_send_module_inserted(uint8_t primary_intf_id) {
+  struct gb_svc_module_inserted_request req = {
+      .primary_intf_id = primary_intf_id, .intf_count = 1, .flags = 0};
+
+  return control_send_request(&req,
+                              sizeof(struct gb_svc_module_inserted_request),
+                              GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
 }

@@ -33,4 +33,7 @@ struct gb_interface *svc_init();
  */
 bool svc_is_ready();
 
+
+int svc_send_module_inserted(uint8_t);
+
 #endif
