@@ -20,6 +20,11 @@ struct svc_control_data {
 
 static struct svc_control_data svc_ctrl_data;
 
+struct gb_svc_intf_activate_response {
+  uint8_t status;
+  uint8_t intf_type;
+} __packed;
+
 struct gb_svc_intf_unipro_response {
   uint8_t result_code;
 } __packed;
@@ -178,15 +183,23 @@ svc_interface_refclk_enable_disable_handler(struct gb_message *msg) {
   svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_refclk_response));
 }
 
-static void svc_interface_unipro_enable_disable_handler(struct gb_message *msg) {
-  struct gb_svc_intf_unipro_response resp = {
-    .result_code = GB_SVC_INTF_UNIPRO_OK
-  };
+static void
+svc_interface_unipro_enable_disable_handler(struct gb_message *msg) {
+  struct gb_svc_intf_unipro_response resp = {.result_code =
+                                                 GB_SVC_INTF_UNIPRO_OK};
   svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_unipro_response));
 }
 
+static void svc_interface_activate_handler(struct gb_message *msg) {
+  struct gb_svc_intf_activate_response resp = {
+    .status = GB_SVC_OP_SUCCESS,
+    .intf_type = GB_SVC_INTF_TYPE_GREYBUS
+  };
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_activate_response));
+}
+
 static void gb_handle_msg(struct gb_message *msg) {
-  LOG_DBG("Process SVC Operation %X", msg->header.type);
+  LOG_DBG("Process SVC Operation %u of type %X", msg->header.id, msg->header.type);
 
   switch (msg->header.type) {
   case GB_SVC_TYPE_INTF_DEVICE_ID_REQUEST:
@@ -194,6 +207,9 @@ static void gb_handle_msg(struct gb_message *msg) {
   case GB_SVC_TYPE_ROUTE_DESTROY_REQUEST:
   case GB_SVC_TYPE_PING_REQUEST:
     svc_empty_request_handler(msg);
+    break;
+  case GB_SVC_TYPE_INTF_ACTIVATE_REQUEST:
+    svc_interface_activate_handler(msg);
     break;
   case GB_SVC_TYPE_INTF_UNIPRO_ENABLE_REQUEST:
   case GB_SVC_TYPE_INTF_UNIPRO_DISABLE_REQUEST:
