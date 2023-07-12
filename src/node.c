@@ -202,7 +202,7 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl,
   }
 
 early_exit:
-  return NULL;
+  return msg;
 }
 
 static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg,
