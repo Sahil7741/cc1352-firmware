@@ -20,6 +20,10 @@ struct svc_control_data {
 
 static struct svc_control_data svc_ctrl_data;
 
+struct gb_svc_dme_peer_set_response {
+  uint16_t result_code;
+} __packed;
+
 struct gb_svc_dme_peer_get_response {
   uint16_t result_code;
   uint32_t attr_value;
@@ -207,6 +211,11 @@ static void svc_dme_peer_get_handler(struct gb_message *msg) {
   svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_get_response));
 }
 
+static void svc_dme_peer_set_handler(struct gb_message *msg) {
+  struct gb_svc_dme_peer_set_response resp = {.result_code = 0};
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_set_response));
+}
+
 static void gb_handle_msg(struct gb_message *msg) {
   LOG_DBG("Process SVC Operation %u of type %X", msg->header.id,
           msg->header.type);
@@ -235,6 +244,9 @@ static void gb_handle_msg(struct gb_message *msg) {
     break;
   case GB_SVC_TYPE_DME_PEER_GET_REQUEST:
     svc_dme_peer_get_handler(msg);
+    break;
+  case GB_SVC_TYPE_DME_PEER_SET_REQUEST:
+    svc_dme_peer_set_handler(msg);
     break;
   case GB_SVC_TYPE_PWRMON_RAIL_COUNT_GET_REQUEST:
     svc_pwrm_get_rail_count_handler(msg);
