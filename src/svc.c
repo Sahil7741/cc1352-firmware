@@ -20,6 +20,11 @@ struct svc_control_data {
 
 static struct svc_control_data svc_ctrl_data;
 
+struct gb_svc_dme_peer_get_response {
+  uint16_t result_code;
+  uint32_t attr_value;
+} __packed;
+
 struct gb_svc_intf_activate_response {
   uint8_t status;
   uint8_t intf_type;
@@ -192,14 +197,19 @@ svc_interface_unipro_enable_disable_handler(struct gb_message *msg) {
 
 static void svc_interface_activate_handler(struct gb_message *msg) {
   struct gb_svc_intf_activate_response resp = {
-    .status = GB_SVC_OP_SUCCESS,
-    .intf_type = GB_SVC_INTF_TYPE_GREYBUS
-  };
+      .status = GB_SVC_OP_SUCCESS, .intf_type = GB_SVC_INTF_TYPE_GREYBUS};
   svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_activate_response));
 }
 
+static void svc_dme_peer_get_handler(struct gb_message *msg) {
+  struct gb_svc_dme_peer_get_response resp = {.result_code = 0,
+                                              .attr_value = 0x0126};
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_get_response));
+}
+
 static void gb_handle_msg(struct gb_message *msg) {
-  LOG_DBG("Process SVC Operation %u of type %X", msg->header.id, msg->header.type);
+  LOG_DBG("Process SVC Operation %u of type %X", msg->header.id,
+          msg->header.type);
 
   switch (msg->header.type) {
   case GB_SVC_TYPE_INTF_DEVICE_ID_REQUEST:
@@ -222,6 +232,9 @@ static void gb_handle_msg(struct gb_message *msg) {
   case GB_SVC_TYPE_INTF_VSYS_ENABLE_REQUEST:
   case GB_SVC_TYPE_INTF_VSYS_DISABLE_REQUEST:
     svc_intf_vsys_enable_disable_handler(msg);
+    break;
+  case GB_SVC_TYPE_DME_PEER_GET_REQUEST:
+    svc_dme_peer_get_handler(msg);
     break;
   case GB_SVC_TYPE_PWRMON_RAIL_COUNT_GET_REQUEST:
     svc_pwrm_get_rail_count_handler(msg);
