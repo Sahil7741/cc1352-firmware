@@ -12,4 +12,7 @@ int ap_rx_submit(struct gb_message *);
 
 struct gb_interface *ap_interface();
 
+
+struct gb_interface *ap_intf();
+
 #endif

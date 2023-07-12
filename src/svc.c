@@ -1,6 +1,7 @@
 #include "svc.h"
 #include "ap.h"
 #include "greybus_protocol.h"
+#include "node.h"
 #include "operations.h"
 #include <errno.h>
 #include <zephyr/kernel.h>
@@ -19,6 +20,30 @@ struct svc_control_data {
 };
 
 static struct svc_control_data svc_ctrl_data;
+
+static struct gb_message *svc_inf_read(struct gb_controller *, uint16_t);
+static int svc_inf_write(struct gb_controller *, struct gb_message *, uint16_t);
+static int svc_inf_create_connection(struct gb_controller *ctrl,
+                                     uint16_t cport_id) {
+  ARG_UNUSED(ctrl);
+  return cport_id == 0 && !svc_is_ready();
+}
+
+static struct gb_interface intf = {
+    .id = SVC_INF_ID,
+    .controller = {.read = svc_inf_read,
+                   .write = svc_inf_write,
+                   .create_connection = svc_inf_create_connection,
+                   .ctrl_data = &svc_ctrl_data}};
+
+struct gb_svc_conn_create_request {
+  uint8_t intf1_id;
+  uint16_t cport1_id;
+  uint8_t intf2_id;
+  uint16_t cport2_id;
+  uint8_t tc;
+  uint8_t flags;
+} __packed;
 
 struct gb_svc_dme_peer_set_response {
   uint16_t result_code;
@@ -130,9 +155,9 @@ int svc_send_hello() {
 }
 
 static void svc_response_helper(struct gb_message *msg, const void *payload,
-                                size_t payload_len) {
+                                size_t payload_len, uint8_t status) {
   struct gb_message *resp = gb_message_response_alloc(
-      payload, payload_len, msg->header.type, msg->header.id);
+      payload, payload_len, msg->header.type, msg->header.id, status);
   if (resp == NULL) {
     LOG_DBG("Failed to allocate response for %X", msg->header.type);
     return;
@@ -153,13 +178,13 @@ static void svc_hello_response_handler(struct gb_message *msg) {
 }
 
 static void svc_empty_request_handler(struct gb_message *msg) {
-  svc_response_helper(msg, NULL, 0);
+  svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
 }
 
 static void svc_pwrm_get_rail_count_handler(struct gb_message *msg) {
   struct gb_svc_pwrmon_rail_count_get_response req = {.rail_count = 0};
   svc_response_helper(msg, &req,
-                      sizeof(struct gb_svc_pwrmon_rail_count_get_response));
+                      sizeof(struct gb_svc_pwrmon_rail_count_get_response), GB_SVC_OP_SUCCESS);
 }
 
 static void svc_intf_set_pwrm_handler(struct gb_message *msg) {
@@ -176,44 +201,72 @@ static void svc_intf_set_pwrm_handler(struct gb_message *msg) {
     resp.result_code = GB_SVC_SETPWRM_PWR_OK;
   }
 
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_set_pwrm_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_set_pwrm_response), GB_SVC_OP_SUCCESS);
 }
 
 static void svc_intf_vsys_enable_disable_handler(struct gb_message *msg) {
   struct gb_svc_intf_vsys_response resp = {.result_code = GB_SVC_INTF_VSYS_OK};
 
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_vsys_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_vsys_response), GB_SVC_OP_SUCCESS);
 }
 
 static void
 svc_interface_refclk_enable_disable_handler(struct gb_message *msg) {
   struct gb_svc_intf_refclk_response resp = {.result_code =
                                                  GB_SVC_INTF_REFCLK_OK};
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_refclk_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_refclk_response), GB_SVC_OP_SUCCESS);
 }
 
 static void
 svc_interface_unipro_enable_disable_handler(struct gb_message *msg) {
   struct gb_svc_intf_unipro_response resp = {.result_code =
                                                  GB_SVC_INTF_UNIPRO_OK};
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_unipro_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_unipro_response), GB_SVC_OP_SUCCESS);
 }
 
 static void svc_interface_activate_handler(struct gb_message *msg) {
   struct gb_svc_intf_activate_response resp = {
       .status = GB_SVC_OP_SUCCESS, .intf_type = GB_SVC_INTF_TYPE_GREYBUS};
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_activate_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_activate_response), GB_SVC_OP_SUCCESS);
 }
 
 static void svc_dme_peer_get_handler(struct gb_message *msg) {
   struct gb_svc_dme_peer_get_response resp = {.result_code = 0,
                                               .attr_value = 0x0126};
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_get_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_get_response), GB_SVC_OP_SUCCESS);
 }
 
 static void svc_dme_peer_set_handler(struct gb_message *msg) {
   struct gb_svc_dme_peer_set_response resp = {.result_code = 0};
-  svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_set_response));
+  svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_set_response), GB_SVC_OP_SUCCESS);
+}
+
+static struct gb_interface *get_interface(uint8_t intf_id) {
+  switch (intf_id) {
+  case SVC_INF_ID:
+    return &intf;
+  case AP_INF_ID:
+    return ap_intf();
+  default:
+    return node_find_by_id(intf_id);
+  }
+}
+
+static void svc_connection_create_handler(struct gb_message *msg) {
+  struct gb_svc_conn_create_request *req =
+      (struct gb_svc_conn_create_request *)msg->payload;
+  struct gb_interface *intf_1, *intf_2;
+  struct gb_connection *conn;
+
+  intf_1 = get_interface(req->intf1_id);
+  intf_2 = get_interface(req->intf2_id);
+
+  conn = gb_create_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
+  if (conn == NULL) {
+    svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
+  } else {
+    svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
+  }
 }
 
 static void gb_handle_msg(struct gb_message *msg) {
@@ -229,6 +282,9 @@ static void gb_handle_msg(struct gb_message *msg) {
     break;
   case GB_SVC_TYPE_INTF_ACTIVATE_REQUEST:
     svc_interface_activate_handler(msg);
+    break;
+  case GB_SVC_TYPE_CONN_CREATE_REQUEST:
+    svc_connection_create_handler(msg);
     break;
   case GB_SVC_TYPE_INTF_UNIPRO_ENABLE_REQUEST:
   case GB_SVC_TYPE_INTF_UNIPRO_DISABLE_REQUEST:
@@ -285,11 +341,6 @@ static int svc_inf_write(struct gb_controller *ctrl, struct gb_message *msg,
   gb_handle_msg(msg);
   return 0;
 }
-
-static struct gb_interface intf = {.id = SVC_INF_ID,
-                                   .controller = {.read = svc_inf_read,
-                                                  .write = svc_inf_write,
-                                                  .ctrl_data = &svc_ctrl_data}};
 
 struct gb_interface *svc_init() {
   k_fifo_init(&svc_ctrl_data.pending_read);

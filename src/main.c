@@ -31,9 +31,6 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 static void node_discovery_entry(void *, void *, void *);
 static void apbridge_entry(void *, void *, void *);
 
-static sys_dlist_t gb_connections_list =
-    SYS_DLIST_STATIC_INIT(&gb_connections_list);
-
 // Thread responsible for beagleconnect node discovery.
 K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 5,
                 0, 0);
@@ -47,7 +44,7 @@ static void apbridge_entry(void *p1, void *p2, void *p3) {
 
   while (1) {
     // Go through all connections
-    SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
+    SYS_DLIST_FOR_EACH_CONTAINER(gb_connections_list_get(), conn, node) {
       msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
       if (msg != NULL)  {
         conn->inf_peer->controller.write(&conn->inf_peer->controller, msg, conn->peer_cport_id);
@@ -128,7 +125,6 @@ void main(void) {
   struct gb_interface *svc = svc_init();
 
   struct gb_connection *conn = gb_create_connection(ap, svc, 0, 0);
-  sys_dlist_append(&gb_connections_list, &conn->node);
 
   ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
   if (ret < 0) {

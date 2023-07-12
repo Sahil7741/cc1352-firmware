@@ -17,6 +17,8 @@ LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static atomic_t operation_id_counter = ATOMIC_INIT(OPERATION_ID_START);
 static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
+static sys_dlist_t gb_connections_list =
+    SYS_DLIST_STATIC_INIT(&gb_connections_list);
 
 static uint16_t new_operation_id() {
   atomic_val_t temp = atomic_inc(&operation_id_counter);
@@ -58,9 +60,25 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
                                            struct gb_interface *inf_peer,
                                            uint16_t ap_cport,
                                            uint16_t peer_cport) {
-  struct gb_connection *conn = k_malloc(sizeof(struct gb_connection));
+  int ret;
+  struct gb_connection *conn;
+
+  ret = inf_ap->controller.create_connection(&inf_ap->controller, ap_cport);
+  if (ret < 0) {
+    LOG_ERR("Failed to create Greybus ap connection");
+    return NULL;
+  }
+
+  ret =
+      inf_peer->controller.create_connection(&inf_peer->controller, peer_cport);
+  if (ret < 0) {
+    LOG_ERR("Failed to create Greybus peer connection");
+    return NULL;
+  }
+
+  conn = k_malloc(sizeof(struct gb_connection));
   if (conn == NULL) {
-    LOG_ERR("Failed to create Greybus connection");
+    LOG_ERR("Failed to allocate Greybus connection");
     return NULL;
   }
 
@@ -69,13 +87,17 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
   conn->peer_cport_id = peer_cport;
   conn->ap_cport_id = ap_cport;
 
+  sys_dnode_init(&conn->node);
+  sys_dlist_append(&gb_connections_list, &conn->node);
+
   return conn;
 }
 
-static struct gb_message *gb_message_alloc(const void *payload,
-                                           size_t payload_len,
-                                           uint8_t message_type,
-                                           uint16_t operation_id) {
+sys_dlist_t *gb_connections_list_get() { return &gb_connections_list; }
+
+static struct gb_message *
+gb_message_alloc(const void *payload, size_t payload_len, uint8_t message_type,
+                 uint16_t operation_id, uint8_t status) {
   struct gb_message *msg;
 
   msg = k_malloc(sizeof(struct gb_message) + payload_len);
@@ -87,7 +109,7 @@ static struct gb_message *gb_message_alloc(const void *payload,
   msg->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
   msg->header.id = operation_id;
   msg->header.type = message_type;
-  msg->header.status = 0;
+  msg->header.status = status;
   msg->payload_size = payload_len;
   memcpy(msg->payload, payload, msg->payload_size);
 
@@ -99,20 +121,23 @@ struct gb_message *gb_message_request_alloc(const void *payload,
                                             uint8_t request_type,
                                             bool is_oneshot) {
   uint16_t operation_id = is_oneshot ? 0 : new_operation_id();
-  return gb_message_alloc(payload, payload_len, request_type, operation_id);
+  return gb_message_alloc(payload, payload_len, request_type, operation_id, 0);
 }
 
 struct gb_message *gb_message_response_alloc(const void *payload,
                                              size_t payload_len,
                                              uint8_t request_type,
-                                             uint16_t operation_id) {
+                                             uint16_t operation_id,
+                                             uint8_t status) {
   return gb_message_alloc(payload, payload_len, OP_RESPONSE | request_type,
-                          operation_id);
+                          operation_id, status);
 }
 
-struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
-                                        gb_controller_write_callback_t write_cb,
-                                        void *ctrl_data) {
+struct gb_interface *
+gb_interface_alloc(gb_controller_read_callback_t read_cb,
+                   gb_controller_write_callback_t write_cb,
+                   gb_controller_create_connection_t create_connection,
+                   void *ctrl_data) {
   struct gb_interface *intf = k_malloc(sizeof(struct gb_interface));
   if (intf == NULL) {
     return NULL;
@@ -121,12 +146,11 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
   intf->id = new_interface_id();
   intf->controller.read = read_cb;
   intf->controller.write = write_cb;
+  intf->controller.create_connection = create_connection;
   intf->controller.ctrl_data = ctrl_data;
   sys_dnode_init(&intf->node);
 
   return intf;
 }
 
-void gb_interface_dealloc(struct gb_interface *intf) {
-  k_free(intf);
-}
+void gb_interface_dealloc(struct gb_interface *intf) { k_free(intf); }

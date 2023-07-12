@@ -307,3 +307,4 @@ early_fail:
   k_mutex_unlock(&nodes_table_mutex);
   return ret;
 }
+

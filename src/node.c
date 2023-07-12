@@ -1,3 +1,4 @@
+#include "node.h"
 #include "greybus_protocol.h"
 #include "operations.h"
 #include "zephyr/sys/dlist.h"
@@ -97,6 +98,82 @@ struct node_control_data {
   struct in6_addr addr;
 };
 
+static int connect_to_node(const struct sockaddr *addr) {
+  int ret, sock;
+  size_t addr_size;
+
+  if (addr->sa_family == AF_INET6) {
+    sock = zsock_socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    addr_size = sizeof(struct sockaddr_in6);
+  } else {
+    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    addr_size = sizeof(struct sockaddr_in);
+  }
+
+  if (sock < 0) {
+    LOG_WRN("Failed to create socket %d", errno);
+    goto fail;
+  }
+
+  ret = zsock_connect(sock, addr, addr_size);
+
+  if (ret) {
+    LOG_WRN("Failed to connect to node %d", errno);
+    goto fail;
+  }
+
+  LOG_INF("Connected to Greybus Node");
+  return sock;
+
+fail:
+  zsock_close(sock);
+  return -1;
+}
+
+static int node_intf_create_connection(struct gb_controller *ctrl,
+                                       uint16_t cport_id) {
+  int ret;
+  struct sockaddr_in6 node_addr;
+  struct node_control_data *ctrl_data = ctrl->ctrl_data;
+  int *cports = ctrl_data->cports;
+
+  memcpy(&node_addr.sin6_addr, &ctrl_data->addr, sizeof(struct in6_addr));
+  node_addr.sin6_family = AF_INET6;
+  node_addr.sin6_scope_id = 0;
+  node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_id);
+
+  if (ctrl_data->cports_len <= cport_id) {
+    cports = k_malloc(sizeof(int) * (cport_id + 1));
+    if (cports == NULL) {
+      return -1;
+    }
+
+    for (size_t i = 0; i <= cport_id; ++i) {
+      cports[i] = -1;
+    }
+
+    memcpy(cports, ctrl_data->cports, ctrl_data->cports_len * sizeof(int));
+    k_free(ctrl_data->cports);
+
+    ctrl_data->cports = cports;
+    ctrl_data->cports_len = cport_id + 1;
+  }
+
+  if (cports[cport_id] != -1) {
+    LOG_ERR("Cannot create multiple connections to a cport");
+    return -1;
+  }
+
+  ret = connect_to_node((struct sockaddr *)&node_addr);
+  if (ret < 0) {
+    return ret;
+  }
+
+  cports[cport_id] = ret;
+
+  return ret;
+}
+
 static struct gb_message *node_inf_read(struct gb_controller *ctrl,
                                         uint16_t cport_id) {
   struct zsock_pollfd fd[1];
@@ -148,8 +225,8 @@ struct gb_interface *node_create_interface(struct in6_addr *addr) {
   ctrl_data->cports_len = 0;
   memcpy(&ctrl_data->addr, addr, sizeof(struct in6_addr));
 
-  struct gb_interface *inf =
-      gb_interface_alloc(node_inf_read, node_inf_write, ctrl_data);
+  struct gb_interface *inf = gb_interface_alloc(
+      node_inf_read, node_inf_write, node_intf_create_connection, ctrl_data);
   if (inf == NULL) {
     goto free_ctrl_data;
   }
