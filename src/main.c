@@ -26,12 +26,7 @@
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-static void node_discovery_entry(void *, void *, void *);
 static void apbridge_entry(void *, void *, void *);
-
-// Thread responsible for beagleconnect node discovery.
-K_THREAD_DEFINE(node_discovery, 1024, node_discovery_entry, NULL, NULL, NULL, 4,
-                0, 0);
 
 K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 5, 0, 0);
 
@@ -76,38 +71,6 @@ static int get_all_nodes(struct in6_addr *node_array,
   return 1;
 }
 
-static void node_discovery_entry(void *p1, void *p2, void *p3) {
-  int ret;
-  struct in6_addr node_array[MAX_GREYBUS_NODES];
-  struct gb_interface *intf;
-
-  // Wait until SVC is ready
-  while (!svc_is_ready()) {
-    k_sleep(K_MSEC(1000));
-  }
-
-  while (1) {
-    ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
-    if (ret < 0) {
-      LOG_WRN("Failed to get greybus nodes");
-      continue;
-    }
-    // LOG_INF("Discoverd %u nodes", ret);
-
-    for (size_t i = 0; i < ret; ++i) {
-      intf = node_find_by_addr(&node_array[i]);
-      if (intf == NULL) {
-        intf = node_create_interface(&node_array[i]);
-        svc_send_module_inserted(intf->id);
-      }
-    }
-
-    // Put the thread to sleep for an interval
-    // LOG_DBG("Going to sleep");
-    k_msleep(NODE_DISCOVERY_INTERVAL);
-  }
-}
-
 static void serial_callback(const struct device *dev, void *user_data) {
   hdlc_rx_submit();
 }
@@ -115,6 +78,8 @@ static void serial_callback(const struct device *dev, void *user_data) {
 void main(void) {
   int ret;
   struct gb_connection *conn;
+  struct in6_addr node_array[MAX_GREYBUS_NODES];
+  struct gb_interface *intf;
 
   LOG_INF("Starting BeaglePlay Greybus");
 
@@ -145,5 +110,27 @@ void main(void) {
 
   svc_send_version();
 
-  k_sleep(K_FOREVER);
+  // Wait until SVC is ready
+  while (!svc_is_ready()) {
+    k_sleep(K_MSEC(NODE_DISCOVERY_INTERVAL));
+  }
+
+  while (1) {
+    ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
+    if (ret < 0) {
+      LOG_WRN("Failed to get greybus nodes");
+      continue;
+    }
+
+    for (size_t i = 0; i < ret; ++i) {
+      intf = node_find_by_addr(&node_array[i]);
+      if (intf == NULL) {
+        intf = node_create_interface(&node_array[i]);
+        svc_send_module_inserted(intf->id);
+      }
+    }
+
+    // Put the thread to sleep for an interval
+    k_msleep(NODE_DISCOVERY_INTERVAL);
+  }
 }
