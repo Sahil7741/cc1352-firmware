@@ -21,6 +21,7 @@
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 typedef void (*greybus_message_callback)(struct gb_message *);
+typedef int (*hdlc_process_frame_callback)(const void *, size_t, uint8_t);
 
 /*
  * HDLC block
@@ -42,7 +43,7 @@ struct hdlc_block {
  *
  * @return 0 if successful. Negative in case of error.
  */
-int hdlc_init();
+int hdlc_init(hdlc_process_frame_callback);
 
 /*
  * Submit an HDLC Block syncronously

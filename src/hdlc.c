@@ -9,13 +9,11 @@
 #include "hdlc.h"
 #include "ap.h"
 #include "greybus_protocol.h"
+#include "mcumgr.h"
 #include <string.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/mgmt/mcumgr/mgmt/mgmt.h>
-#include <zephyr/mgmt/mcumgr/transport/serial.h>
-#include <zephyr/mgmt/mcumgr/transport/smp.h>
 #include <zephyr/sys/crc.h>
 #include <zephyr/sys/ring_buffer.h>
 
@@ -35,8 +33,7 @@ K_WORK_DEFINE(hdlc_rx_work, hdlc_rx_handler);
 RING_BUF_DECLARE(hdlc_rx_ringbuf, HDLC_RX_BUF_SIZE);
 
 struct hdlc_driver {
-	struct mcumgr_serial_rx_ctxt smp_rx_ctx;
-	struct smp_transport smp_transport;
+	hdlc_process_frame_callback process_callback_frame_cb;
 
 	uint16_t crc;
 	bool next_escaped;
@@ -79,66 +76,16 @@ static void block_out(struct hdlc_driver *drv, const struct hdlc_block *block)
 	uart_poll_out(uart_dev, HDLC_FRAME);
 }
 
-static void hdlc_process_greybus_frame(struct hdlc_driver *drv, const char *buffer,
-				       size_t buffer_len)
-{
-	// Do something with hdlc information. Starts at hdlc->rx_buffer[3]
-	// Can be variable length
-	struct gb_operation_msg_hdr hdr;
-	struct gb_message *msg;
-	size_t payload_size;
-
-	memcpy(&hdr, buffer, sizeof(struct gb_operation_msg_hdr));
-
-	if (hdr.size > buffer_len) {
-		LOG_ERR("Greybus Message size is greater than received buffer.");
-		return;
-	}
-
-	payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
-	msg = k_malloc(sizeof(struct gb_message) + payload_size);
-	if (msg == NULL) {
-		LOG_ERR("Failed to allocate greybus message");
-		return;
-	}
-	msg->payload_size = payload_size;
-	memcpy(&msg->header, &hdr, sizeof(struct gb_operation_msg_hdr));
-	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload_size);
-	ap_rx_submit(msg);
-
-	return;
-}
-
-static void hdlc_process_mcumgr_frame(struct hdlc_driver *drv, void *buffer, size_t buffer_len)
-{
-	struct net_buf *nb;
-	LOG_DBG("Got MCUmgr frame");
-
-	nb = mcumgr_serial_process_frag(&drv->smp_rx_ctx, buffer, buffer_len);
-
-	if (nb != NULL) {
-		LOG_DBG("Successful in processing mcumgr fragment");
-		smp_rx_req(&drv->smp_transport, nb);
-	}
-}
-
 static void hdlc_process_complete_frame(struct hdlc_driver *drv)
 {
+	int ret;
 	uint8_t address = drv->rx_buffer[0];
 	size_t len = drv->rx_buffer_len - 4;
 	void *buffer = &drv->rx_buffer[2];
 
-	switch (address) {
-	case ADDRESS_GREYBUS:
-		hdlc_process_greybus_frame(drv, buffer, len);
-		break;
-	case ADDRESS_MCUMGR:
-		hdlc_process_mcumgr_frame(drv, buffer, len);
-		break;
-	case ADDRESS_DBG:
-		LOG_WRN("Ignore DBG Frame");
-		break;
-	default:
+	ret = drv->process_callback_frame_cb(buffer, len, address);
+
+	if (ret < 0) {
 		LOG_ERR("Dropped HDLC addr:%x ctrl:%x", address, drv->rx_buffer[1]);
 		LOG_HEXDUMP_DBG(drv->rx_buffer, drv->rx_buffer_len, "rx_buffer");
 	}
@@ -221,28 +168,6 @@ static void hdlc_rx_handler(struct k_work *work)
 	}
 }
 
-static int smp_hdlc_tx_cb(const void *data, int len)
-{
-	hdlc_block_send_sync(data, len, ADDRESS_MCUMGR, 0x03);
-	return 0;
-}
-
-static int smp_hdlc_tx_pkt(struct net_buf *nb)
-{
-	int rc;
-
-	rc = mcumgr_serial_tx_pkt(nb->data, nb->len, smp_hdlc_tx_cb);
-	smp_packet_free(nb);
-
-	LOG_DBG("SMP TX %d", rc);
-	return rc;
-}
-
-static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb)
-{
-	return 256;
-}
-
 int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t address, uint8_t control)
 {
 	size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
@@ -263,24 +188,15 @@ int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t addre
 	return block_size;
 }
 
-int hdlc_init()
+int hdlc_init(hdlc_process_frame_callback cb)
 {
-	int rc;
-
 	hdlc_driver.crc = 0xffff;
 	hdlc_driver.send_seq = 0;
 	hdlc_driver.rx_send_seq = 0;
 	hdlc_driver.next_escaped = false;
 	hdlc_driver.rx_buffer_len = 0;
 
-	hdlc_driver.smp_transport.functions.output = smp_hdlc_tx_pkt;
-	hdlc_driver.smp_transport.functions.get_mtu = smp_hdlc_get_mtu;
-
-	rc = smp_transport_init(&hdlc_driver.smp_transport);
-	if (rc) {
-		LOG_ERR("Failed to init SMP Transport");
-		return -1;
-	}
+	hdlc_driver.process_callback_frame_cb = cb;
 
 	return 0;
 }

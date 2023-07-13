@@ -6,6 +6,7 @@
 
 #include "ap.h"
 #include "hdlc.h"
+#include "mcumgr.h"
 #include "node.h"
 #include "operations.h"
 #include "svc.h"
@@ -77,6 +78,48 @@ static void serial_callback(const struct device *dev, void *user_data)
 	hdlc_rx_submit();
 }
 
+static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
+{
+	struct gb_operation_msg_hdr hdr;
+	struct gb_message *msg;
+	size_t payload_size;
+
+	memcpy(&hdr, buffer, sizeof(struct gb_operation_msg_hdr));
+
+	if (hdr.size > buffer_len) {
+		LOG_ERR("Greybus Message size is greater than received buffer.");
+		return -1;
+	}
+
+	payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
+	msg = k_malloc(sizeof(struct gb_message) + payload_size);
+	if (msg == NULL) {
+		LOG_ERR("Failed to allocate greybus message");
+		return -1;
+	}
+	msg->payload_size = payload_size;
+	memcpy(&msg->header, &hdr, sizeof(struct gb_operation_msg_hdr));
+	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload_size);
+	ap_rx_submit(msg);
+
+	return 0;
+}
+
+static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t address)
+{
+	switch (address) {
+	case ADDRESS_GREYBUS:
+		return hdlc_process_greybus_frame(buffer, len);
+	case ADDRESS_MCUMGR:
+		return mcumgr_process_frame(buffer, len);
+	case ADDRESS_DBG:
+		LOG_WRN("Ignore DBG Frame");
+    return 0;
+	}
+
+  return -1;
+}
+
 void main(void)
 {
 	int ret;
@@ -91,7 +134,7 @@ void main(void)
 		return;
 	}
 
-	hdlc_init();
+	hdlc_init(hdlc_process_complete_frame);
 	struct gb_interface *ap = ap_init();
 	struct gb_interface *svc = svc_init();
 

@@ -369,8 +369,6 @@ static void gb_handle_msg(struct gb_message *msg)
 	default:
 		LOG_WRN("Handling SVC operation Type %X not supported yet", msg->header.type);
 	}
-
-	gb_message_dealloc(msg);
 }
 
 static struct gb_message *svc_inf_read(struct gb_controller *ctrl, uint16_t cport_id)
@@ -382,6 +380,7 @@ static struct gb_message *svc_inf_read(struct gb_controller *ctrl, uint16_t cpor
 static int svc_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
 	gb_handle_msg(msg);
+	gb_message_dealloc(msg);
 	return 0;
 }
 
