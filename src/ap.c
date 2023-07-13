@@ -32,6 +32,21 @@ static int ap_inf_create_connection(struct gb_controller *ctrl,
   }
 }
 
+static void ap_inf_destroy_connection(struct gb_controller *ctrl,
+                                      uint16_t cport_id) {
+  struct gb_message *msg;
+  struct ap_controller_data *ctrl_data = ctrl->ctrl_data;
+  if (cport_id >= AP_MAX_NODES) {
+    return;
+  }
+
+  msg = k_fifo_get(&ctrl_data->pending_read[cport_id], K_NO_WAIT);
+  while (msg) {
+    gb_message_dealloc(msg);
+    msg = k_fifo_get(&ctrl_data->pending_read[cport_id], K_NO_WAIT);
+  }
+}
+
 static struct ap_controller_data ap_ctrl_data;
 
 static struct gb_interface intf = {
@@ -40,6 +55,7 @@ static struct gb_interface intf = {
         .write = ap_inf_write,
         .read = ap_inf_read,
         .create_connection = ap_inf_create_connection,
+        .destroy_connection = ap_inf_destroy_connection,
         .ctrl_data = &ap_ctrl_data,
     }};
 

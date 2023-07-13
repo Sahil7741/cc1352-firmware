@@ -174,6 +174,19 @@ static int node_intf_create_connection(struct gb_controller *ctrl,
   return ret;
 }
 
+static void node_intf_destroy_connection(struct gb_controller *ctrl,
+                                         uint16_t cport_id) {
+  struct node_control_data *ctrl_data = ctrl->ctrl_data;
+
+  if (cport_id >= ctrl_data->cports_len) {
+    return;
+  }
+
+  zsock_close(ctrl_data->cports[cport_id]);
+  
+  ctrl_data->cports[cport_id] = -1;
+}
+
 static struct gb_message *node_inf_read(struct gb_controller *ctrl,
                                         uint16_t cport_id) {
   struct zsock_pollfd fd[1];
@@ -226,7 +239,8 @@ struct gb_interface *node_create_interface(struct in6_addr *addr) {
   memcpy(&ctrl_data->addr, addr, sizeof(struct in6_addr));
 
   struct gb_interface *inf = gb_interface_alloc(
-      node_inf_read, node_inf_write, node_intf_create_connection, ctrl_data);
+      node_inf_read, node_inf_write, node_intf_create_connection,
+      node_intf_destroy_connection, ctrl_data);
   if (inf == NULL) {
     goto free_ctrl_data;
   }

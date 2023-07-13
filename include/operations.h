@@ -25,6 +25,8 @@ typedef int (*gb_controller_write_callback_t)(struct gb_controller *,
                                               struct gb_message *, uint16_t);
 typedef int (*gb_controller_create_connection_t)(struct gb_controller *,
                                                  uint16_t);
+typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *,
+                                                   uint16_t);
 
 /*
  * Struct to represent greybus message. This is a variable sized type.
@@ -53,6 +55,7 @@ struct gb_controller {
   gb_controller_read_callback_t read;
   gb_controller_write_callback_t write;
   gb_controller_create_connection_t create_connection;
+  gb_controller_destroy_connection_t destroy_connection;
   void *ctrl_data;
 };
 
@@ -185,10 +188,14 @@ struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t,
 struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t,
                                         gb_controller_write_callback_t,
                                         gb_controller_create_connection_t,
+                                        gb_controller_destroy_connection_t,
                                         void *);
 
 void gb_interface_dealloc(struct gb_interface *);
 
 sys_dlist_t *gb_connections_list_get();
+
+void gb_destroy_connection(struct gb_interface *, struct gb_interface *,
+                           uint16_t, uint16_t);
 
 #endif

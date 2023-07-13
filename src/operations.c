@@ -93,6 +93,37 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
   return conn;
 }
 
+static struct gb_connection *gb_connection_get(struct gb_interface *inf_ap,
+                                               struct gb_interface *inf_peer) {
+  struct gb_connection *conn;
+
+  SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
+    // While the names are inf_peer and inf_ap, they are just arbitrary. So do
+    // comparisons in reverse as well
+    if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap) ||
+        (conn->inf_peer == inf_ap && conn->inf_ap == inf_peer)) {
+      return conn;
+    }
+  }
+
+  return NULL;
+}
+
+void gb_destroy_connection(struct gb_interface *inf_ap,
+                           struct gb_interface *inf_peer, uint16_t ap_cport,
+                           uint16_t peer_cport) {
+  struct gb_connection *conn = gb_connection_get(inf_ap, inf_peer);
+
+  sys_dlist_remove(&conn->node);
+
+  conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller,
+                                              ap_cport);
+  conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller,
+                                                peer_cport);
+
+  k_free(conn);
+}
+
 sys_dlist_t *gb_connections_list_get() { return &gb_connections_list; }
 
 static struct gb_message *
@@ -137,6 +168,7 @@ struct gb_interface *
 gb_interface_alloc(gb_controller_read_callback_t read_cb,
                    gb_controller_write_callback_t write_cb,
                    gb_controller_create_connection_t create_connection,
+                   gb_controller_destroy_connection_t destroy_connection,
                    void *ctrl_data) {
   struct gb_interface *intf = k_malloc(sizeof(struct gb_interface));
   if (intf == NULL) {
@@ -147,6 +179,7 @@ gb_interface_alloc(gb_controller_read_callback_t read_cb,
   intf->controller.read = read_cb;
   intf->controller.write = write_cb;
   intf->controller.create_connection = create_connection;
+  intf->controller.destroy_connection = destroy_connection;
   intf->controller.ctrl_data = ctrl_data;
   sys_dnode_init(&intf->node);
 
