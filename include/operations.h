@@ -1,7 +1,7 @@
 /*
- * This file contains functions to manage greybus operations queue.
- * This allows asynchronous processing of greybus operations.
- * This API is thread-safe
+ * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _OPERATIONS_H_

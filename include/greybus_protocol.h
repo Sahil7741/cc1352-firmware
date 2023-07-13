@@ -1,5 +1,10 @@
 /*
- * This file contains definations of greybus data structures
+ * Copyright(c) 2014 - 2015 Google Inc. All rights reserved.
+ * Copyright(c) 2014 - 2015 Linaro Ltd. All rights reserved.
+ *
+ * SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
+ *
+ * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
 
 #ifndef GREYBUS_PROTOCOL_H

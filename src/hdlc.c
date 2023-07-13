@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2016-2019 Intel Corporation
+ * Copyright (c) 2020 Statropy Software LLC
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
+ */
+
 #include "hdlc.h"
 #include "ap.h"
 #include "greybus_protocol.h"
@@ -109,7 +117,7 @@ static void hdlc_process_mcumgr_frame(struct hdlc_driver *drv, void *buffer, siz
 	nb = mcumgr_serial_process_frag(&drv->smp_rx_ctx, buffer, buffer_len);
 
 	if (nb != NULL) {
-		LOG_DBG("Successfull in processing mcumgr framg");
+		LOG_DBG("Successful in processing mcumgr fragment");
 		smp_rx_req(&drv->smp_transport, nb);
 	}
 }
