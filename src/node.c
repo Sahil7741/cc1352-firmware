@@ -2,10 +2,17 @@
 #include "greybus_protocol.h"
 #include "operations.h"
 #include "zephyr/sys/dlist.h"
+#include <errno.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
+
+struct node_control_data {
+  int *cports;
+  uint16_t cports_len;
+  struct in6_addr addr;
+};
 
 static sys_dlist_t node_interface_list =
     SYS_DLIST_STATIC_INIT(&node_interface_list);
@@ -17,7 +24,7 @@ static int write_data(int sock, const void *data, size_t len) {
     ret = zsock_send(sock, transmitted + (char *)data, len - transmitted, 0);
     if (ret < 0) {
       LOG_ERR("Failed to transmit data");
-      return -1;
+      return ret;
     }
     transmitted += ret;
   }
@@ -31,7 +38,7 @@ static int read_data(int sock, void *data, size_t len) {
     ret = zsock_recv(sock, recieved + (char *)data, len - recieved, 0);
     if (ret < 0) {
       LOG_ERR("Failed to recieve data");
-      return -1;
+      return ret;
     } else if (ret == 0) {
       // Socket was closed by peer
       return 0;
@@ -81,22 +88,19 @@ static int gb_message_send(int sock, const struct gb_message *msg) {
 
   ret = write_data(sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
   if (ret < 0) {
-    return -1;
+    goto early_exit;
   }
 
   ret = write_data(sock, msg->payload, msg->payload_size);
   if (ret < 0) {
-    return -1;
+    goto early_exit;
   }
 
-  return SUCCESS;
-}
+  return 0;
 
-struct node_control_data {
-  int *cports;
-  uint16_t cports_len;
-  struct in6_addr addr;
-};
+early_exit:
+  return ret;
+}
 
 static int connect_to_node(const struct sockaddr *addr) {
   int ret, sock;
@@ -111,23 +115,22 @@ static int connect_to_node(const struct sockaddr *addr) {
   }
 
   if (sock < 0) {
-    LOG_WRN("Failed to create socket %d", errno);
+    LOG_ERR("Failed to create socket %d", errno);
+    ret = sock;
     goto fail;
   }
 
   ret = zsock_connect(sock, addr, addr_size);
-
   if (ret) {
-    LOG_WRN("Failed to connect to node %d", errno);
+    LOG_ERR("Failed to connect to node %d", errno);
     goto fail;
   }
 
-  LOG_INF("Connected to Greybus Node");
   return sock;
 
 fail:
   zsock_close(sock);
-  return -1;
+  return ret;
 }
 
 static int node_intf_create_connection(struct gb_controller *ctrl,
@@ -145,7 +148,8 @@ static int node_intf_create_connection(struct gb_controller *ctrl,
   if (ctrl_data->cports_len <= cport_id) {
     cports = k_malloc(sizeof(int) * (cport_id + 1));
     if (cports == NULL) {
-      return -1;
+      ret = -ENOMEM;
+      goto early_exit;
     }
 
     for (size_t i = 0; i <= cport_id; ++i) {
@@ -161,7 +165,8 @@ static int node_intf_create_connection(struct gb_controller *ctrl,
 
   if (cports[cport_id] != -1) {
     LOG_ERR("Cannot create multiple connections to a cport");
-    return -1;
+    ret = -EEXIST;
+    goto early_exit;
   }
 
   ret = connect_to_node((struct sockaddr *)&node_addr);
@@ -171,6 +176,7 @@ static int node_intf_create_connection(struct gb_controller *ctrl,
 
   cports[cport_id] = ret;
 
+early_exit:
   return ret;
 }
 
@@ -183,14 +189,13 @@ static void node_intf_destroy_connection(struct gb_controller *ctrl,
   }
 
   zsock_close(ctrl_data->cports[cport_id]);
-  
   ctrl_data->cports[cport_id] = -1;
 }
 
 static struct gb_message *node_inf_read(struct gb_controller *ctrl,
                                         uint16_t cport_id) {
-  struct zsock_pollfd fd[1];
   int ret;
+  struct zsock_pollfd fd[1];
   bool flag = false;
   struct gb_message *msg = NULL;
   struct node_control_data *ctrl_data = ctrl->ctrl_data;
@@ -232,7 +237,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr) {
   struct node_control_data *ctrl_data =
       k_malloc(sizeof(struct node_control_data));
   if (ctrl_data == NULL) {
-    return NULL;
+    goto early_exit;
   }
   ctrl_data->cports = NULL;
   ctrl_data->cports_len = 0;
@@ -251,6 +256,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr) {
 
 free_ctrl_data:
   k_free(ctrl_data);
+early_exit:
   return NULL;
 }
 
