@@ -8,8 +8,8 @@
 #define HDLC_MAX_BLOCK_SIZE CONFIG_BEAGLEPLAY_HDLC_MAX_BLOCK_SIZE
 
 #define ADDRESS_GREYBUS 0x01
-#define ADDRESS_DBG 0x02
-#define ADDRESS_MCUMGR 0x03
+#define ADDRESS_DBG     0x02
+#define ADDRESS_MCUMGR  0x03
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
@@ -25,10 +25,10 @@ typedef void (*greybus_message_callback)(struct gb_message *);
  * @param hdlc block buffer
  */
 struct hdlc_block {
-  uint8_t address;
-  uint8_t control;
-  uint8_t length;
-  uint8_t buffer[];
+	uint8_t address;
+	uint8_t control;
+	uint8_t length;
+	uint8_t buffer[];
 };
 
 /*

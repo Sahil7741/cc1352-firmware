@@ -14,14 +14,11 @@
 
 struct gb_controller;
 
-typedef struct gb_message *(*gb_controller_read_callback_t)(
-    struct gb_controller *, uint16_t);
-typedef int (*gb_controller_write_callback_t)(struct gb_controller *,
-                                              struct gb_message *, uint16_t);
-typedef int (*gb_controller_create_connection_t)(struct gb_controller *,
-                                                 uint16_t);
-typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *,
-                                                   uint16_t);
+typedef struct gb_message *(*gb_controller_read_callback_t)(struct gb_controller *, uint16_t);
+typedef int (*gb_controller_write_callback_t)(struct gb_controller *, struct gb_message *,
+					      uint16_t);
+typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_t);
+typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint16_t);
 
 /*
  * Struct to represent greybus message. This is a variable sized type.
@@ -32,10 +29,10 @@ typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *,
  * @param payload: heap allocated payload.
  */
 struct gb_message {
-  void *fifo_reserved;
-  struct gb_operation_msg_hdr header;
-  size_t payload_size;
-  uint8_t payload[];
+	void *fifo_reserved;
+	struct gb_operation_msg_hdr header;
+	size_t payload_size;
+	uint8_t payload[];
 };
 
 /*
@@ -47,11 +44,11 @@ struct gb_message {
  * @param ctrl_data: private controller data
  */
 struct gb_controller {
-  gb_controller_read_callback_t read;
-  gb_controller_write_callback_t write;
-  gb_controller_create_connection_t create_connection;
-  gb_controller_destroy_connection_t destroy_connection;
-  void *ctrl_data;
+	gb_controller_read_callback_t read;
+	gb_controller_write_callback_t write;
+	gb_controller_create_connection_t create_connection;
+	gb_controller_destroy_connection_t destroy_connection;
+	void *ctrl_data;
 };
 
 /*
@@ -61,9 +58,9 @@ struct gb_controller {
  * @param controller: A controller which provides operations for this interface
  */
 struct gb_interface {
-  uint8_t id;
-  struct gb_controller controller;
-  sys_dnode_t node;
+	uint8_t id;
+	struct gb_controller controller;
+	sys_dnode_t node;
 };
 
 /*
@@ -75,11 +72,11 @@ struct gb_interface {
  * @param peer_cport_id: Cport of Peer to connect to.
  */
 struct gb_connection {
-  struct gb_interface *inf_ap;
-  struct gb_interface *inf_peer;
-  uint16_t ap_cport_id;
-  uint16_t peer_cport_id;
-  sys_dnode_t node;
+	struct gb_interface *inf_ap;
+	struct gb_interface *inf_peer;
+	uint16_t ap_cport_id;
+	uint16_t peer_cport_id;
+	sys_dnode_t node;
 };
 
 /*
@@ -89,8 +86,9 @@ struct gb_connection {
  *
  * @return true if message is response, else false.
  */
-static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr) {
-  return hdr->type & GB_TYPE_RESPONSE_FLAG;
+static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr)
+{
+	return hdr->type & GB_TYPE_RESPONSE_FLAG;
 }
 
 /*
@@ -100,8 +98,9 @@ static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr) {
  *
  * @return true if message is successful, else false.
  */
-static inline bool gb_hdr_is_success(const struct gb_operation_msg_hdr *hdr) {
-  return hdr->status == 0x00;
+static inline bool gb_hdr_is_success(const struct gb_operation_msg_hdr *hdr)
+{
+	return hdr->status == 0x00;
 }
 
 /*
@@ -111,8 +110,9 @@ static inline bool gb_hdr_is_success(const struct gb_operation_msg_hdr *hdr) {
  *
  * @return true if message is response, else false.
  */
-static inline bool gb_message_is_response(const struct gb_message *msg) {
-  return gb_hdr_is_response(&msg->header);
+static inline bool gb_message_is_response(const struct gb_message *msg)
+{
+	return gb_hdr_is_response(&msg->header);
 }
 
 /*
@@ -122,8 +122,9 @@ static inline bool gb_message_is_response(const struct gb_message *msg) {
  *
  * @return true if message is successful, else false.
  */
-static inline bool gb_message_is_success(const struct gb_message *msg) {
-  return gb_hdr_is_success(&msg->header);
+static inline bool gb_message_is_success(const struct gb_message *msg)
+{
+	return gb_hdr_is_success(&msg->header);
 }
 
 /*
@@ -145,9 +146,8 @@ int gb_message_hdlc_send(const struct gb_message *);
  *
  * @return greybus connection allocated on heap. Null in case of errro
  */
-struct gb_connection *gb_create_connection(struct gb_interface *,
-                                           struct gb_interface *, uint16_t,
-                                           uint16_t);
+struct gb_connection *gb_create_connection(struct gb_interface *, struct gb_interface *, uint16_t,
+					   uint16_t);
 
 /*
  * Get greybus connections list. Not sure if this should live in this file
@@ -162,8 +162,7 @@ sys_dlist_t *gb_connections_list_get();
  * @param interface 1 cport
  * @param interface 2 cport
  */
-void gb_destroy_connection(struct gb_interface *, struct gb_interface *,
-                           uint16_t, uint16_t);
+void gb_destroy_connection(struct gb_interface *, struct gb_interface *, uint16_t, uint16_t);
 
 /*
  * Allocate a greybus request message
@@ -175,8 +174,7 @@ void gb_destroy_connection(struct gb_interface *, struct gb_interface *,
  *
  * @return greybus message allocated on heap. Null in case of errro
  */
-struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t,
-                                            bool);
+struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t, bool);
 
 /*
  * Allocate a greybus response message
@@ -188,8 +186,7 @@ struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t,
  *
  * @return greybus message allocated on heap. Null in case of errro
  */
-struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t,
-                                             uint16_t, uint8_t);
+struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t, uint16_t, uint8_t);
 
 /*
  * Deallocate a greybus message.
@@ -209,10 +206,9 @@ void gb_message_dealloc(struct gb_message *);
  * @return allocated greybus interface. NULL in case of error
  */
 struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t,
-                                        gb_controller_write_callback_t,
-                                        gb_controller_create_connection_t,
-                                        gb_controller_destroy_connection_t,
-                                        void *);
+					gb_controller_write_callback_t,
+					gb_controller_create_connection_t,
+					gb_controller_destroy_connection_t, void *);
 
 /*
  * Deallocate a greybus interface

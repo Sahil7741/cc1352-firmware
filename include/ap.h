@@ -3,7 +3,7 @@
 
 #include "operations.h"
 
-#define AP_INF_ID 1
+#define AP_INF_ID       1
 #define AP_SVC_CPORT_ID 0
 
 /*
