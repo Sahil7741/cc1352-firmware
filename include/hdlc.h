@@ -1,8 +1,7 @@
-#ifndef HDLC_H
-#define HDLC_H
+#ifndef _HDLC_H_
+#define _HDLC_H_
 
 #include "operations.h"
-#include <stddef.h>
 #include <stdint.h>
 #include <zephyr/device.h>
 
@@ -17,8 +16,15 @@ static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 typedef void (*greybus_message_callback)(struct gb_message *);
 
+/*
+ * HDLC block
+ *
+ * @param HDLC address
+ * @param HDLC control
+ * @param hdlc block buffer length
+ * @param hdlc block buffer
+ */
 struct hdlc_block {
-  void *fifo_reserved;
   uint8_t address;
   uint8_t control;
   uint8_t length;
@@ -31,18 +37,6 @@ struct hdlc_block {
  * @return 0 if successful. Negative in case of error.
  */
 int hdlc_init();
-
-/*
- * Submit an HDLC block to be transmitted. This is async
- *
- * @param buffer
- * @param buffer_length
- * @param address
- * @param control
- *
- * @return block size (> 0) if successful. Negative in case of error
- */
-int hdlc_block_submit(uint8_t *, size_t, uint8_t, uint8_t);
 
 /*
  * Submit an HDLC Block syncronously

@@ -18,13 +18,11 @@
 #define HDLC_ESC_FRAME 0x5E
 #define HDLC_ESC_ESC 0x5D
 
-static void hdlc_tx_handler(struct k_work *);
 static void hdlc_rx_handler(struct k_work *);
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-K_FIFO_DEFINE(hdlc_tx_queue);
-K_WORK_DEFINE(hdlc_tx_work, hdlc_tx_handler);
+// TODO: Probably switch to a higher priority thread than apbridge
 K_WORK_DEFINE(hdlc_rx_work, hdlc_rx_handler);
 RING_BUF_DECLARE(hdlc_rx_ringbuf, HDLC_RX_BUF_SIZE);
 
@@ -71,8 +69,6 @@ static void block_out(struct hdlc_driver *drv, const struct hdlc_block *block) {
   uart_poll_out_crc(uart_dev, crc_calc >> 8, &crc);
   uart_poll_out(uart_dev, HDLC_FRAME);
 }
-
-static void hdlc_dealloc_block(struct hdlc_block *block) { k_free(block); }
 
 static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
                                        const char *buffer, size_t buffer_len) {
@@ -190,15 +186,6 @@ static void hdlc_rx_input_byte(struct hdlc_driver *drv, uint8_t byte) {
   }
 }
 
-static void hdlc_tx_handler(struct k_work *work) {
-  struct hdlc_block *block = k_fifo_get(&hdlc_tx_queue, K_NO_WAIT);
-  while (block) {
-    block_out(&hdlc_driver, block);
-    hdlc_dealloc_block(block);
-    block = k_fifo_get(&hdlc_tx_queue, K_NO_WAIT);
-  }
-}
-
 static int hdlc_process_buffer(uint8_t *buf, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     hdlc_rx_input_byte(&hdlc_driver, buf[i]);
@@ -223,45 +210,6 @@ static void hdlc_rx_handler(struct k_work *work) {
   }
 }
 
-int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len,
-                         uint8_t address, uint8_t control) {
-  size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
-  struct hdlc_block *block = k_malloc(block_size);
-
-  if (block == NULL) {
-    return -1;
-  }
-
-  block->length = buffer_len;
-  memcpy(block->buffer, buffer, buffer_len);
-  block->address = address;
-  block->control = control;
-
-  block_out(&hdlc_driver, block);
-
-  return block_size;
-}
-
-int hdlc_block_submit(uint8_t *buffer, size_t buffer_len, uint8_t address,
-                      uint8_t control) {
-  size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
-  struct hdlc_block *block = k_malloc(block_size);
-
-  if (block == NULL) {
-    return -1;
-  }
-
-  block->length = buffer_len;
-  memcpy(block->buffer, buffer, buffer_len);
-  block->address = address;
-  block->control = control;
-
-  k_fifo_put(&hdlc_tx_queue, block);
-  k_work_submit(&hdlc_tx_work);
-
-  return block_size;
-}
-
 static int smp_hdlc_tx_cb(const void *data, int len) {
   hdlc_block_send_sync(data, len, ADDRESS_MCUMGR, 0x03);
   return 0;
@@ -278,6 +226,26 @@ static int smp_hdlc_tx_pkt(struct net_buf *nb) {
 }
 
 static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb) { return 256; }
+
+int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len,
+                         uint8_t address, uint8_t control) {
+  size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
+  struct hdlc_block *block = k_malloc(block_size);
+  if (block == NULL) {
+    return -1;
+  }
+
+  block->length = buffer_len;
+  memcpy(block->buffer, buffer, buffer_len);
+  block->address = address;
+  block->control = control;
+
+  block_out(&hdlc_driver, block);
+
+  k_free(block);
+
+  return block_size;
+}
 
 int hdlc_init() {
   int rc;

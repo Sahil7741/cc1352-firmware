@@ -1,5 +1,5 @@
-#ifndef SVC_H
-#define SVC_H
+#ifndef _SVC_H_
+#define _SVC_H_
 
 #include "operations.h"
 
