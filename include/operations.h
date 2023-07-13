@@ -4,18 +4,13 @@
  * This API is thread-safe
  */
 
-#ifndef OPERATIONS_H
-#define OPERATIONS_H
+#ifndef _OPERATIONS_H_
+#define _OPERATIONS_H_
 
 #include "greybus_protocol.h"
 #include <stdbool.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/dlist.h>
-
-/* Return codes for the functions defined here */
-#define SUCCESS 0
-#define E_NULL_REQUEST 1
-#define E_ALREADY_SENT 2
 
 struct gb_controller;
 
@@ -132,16 +127,11 @@ static inline bool gb_message_is_success(const struct gb_message *msg) {
 }
 
 /*
- * Deallocate a greybus message.
- *
- * @param pointer to the message to deallcate
- */
-void gb_message_dealloc(struct gb_message *);
-
-/*
  * Send a greybus message over HDLC
  *
  * @param Greybus message
+ *
+ * TODO: Move to hdlc
  */
 int gb_message_hdlc_send(const struct gb_message *);
 
@@ -158,6 +148,22 @@ int gb_message_hdlc_send(const struct gb_message *);
 struct gb_connection *gb_create_connection(struct gb_interface *,
                                            struct gb_interface *, uint16_t,
                                            uint16_t);
+
+/*
+ * Get greybus connections list. Not sure if this should live in this file
+ */
+sys_dlist_t *gb_connections_list_get();
+
+/*
+ * Destroy greybus connection
+ *
+ * @param interface 1
+ * @param interface 2
+ * @param interface 1 cport
+ * @param interface 2 cport
+ */
+void gb_destroy_connection(struct gb_interface *, struct gb_interface *,
+                           uint16_t, uint16_t);
 
 /*
  * Allocate a greybus request message
@@ -185,17 +191,34 @@ struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t,
 struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t,
                                              uint16_t, uint8_t);
 
+/*
+ * Deallocate a greybus message.
+ *
+ * @param pointer to the message to deallcate
+ */
+void gb_message_dealloc(struct gb_message *);
+
+/*
+ * Allocate a greybus interface
+ *
+ * @param read callback
+ * @param write callback
+ * @param create connection callback
+ * @param destroy connection callback
+ *
+ * @return allocated greybus interface. NULL in case of error
+ */
 struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t,
                                         gb_controller_write_callback_t,
                                         gb_controller_create_connection_t,
                                         gb_controller_destroy_connection_t,
                                         void *);
 
+/*
+ * Deallocate a greybus interface
+ *
+ * @param greybus interface
+ */
 void gb_interface_dealloc(struct gb_interface *);
-
-sys_dlist_t *gb_connections_list_get();
-
-void gb_destroy_connection(struct gb_interface *, struct gb_interface *,
-                           uint16_t, uint16_t);
 
 #endif

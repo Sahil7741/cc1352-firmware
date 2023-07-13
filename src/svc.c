@@ -161,7 +161,7 @@ static int control_send_request(void *payload, size_t payload_len,
 
   k_fifo_put(&svc_ctrl_data.pending_read, msg);
 
-  return SUCCESS;
+  return 0;
 }
 
 int svc_send_version() {
