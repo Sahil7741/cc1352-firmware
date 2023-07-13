@@ -1,6 +1,9 @@
 #include "operations.h"
+#include "ap.h"
 #include "greybus_protocol.h"
 #include "hdlc.h"
+#include "node.h"
+#include "svc.h"
 #include "zephyr/kernel.h"
 #include <errno.h>
 #include <limits.h>
@@ -180,3 +183,16 @@ gb_interface_alloc(gb_controller_read_callback_t read_cb,
 }
 
 void gb_interface_dealloc(struct gb_interface *intf) { k_free(intf); }
+
+struct gb_interface *find_interface_by_id(uint8_t intf_id) {
+  switch (intf_id) {
+  case SVC_INF_ID:
+    return svc_interface();
+  case AP_INF_ID:
+    return ap_intf();
+  default:
+    return node_find_by_id(intf_id);
+  }
+}
+
+

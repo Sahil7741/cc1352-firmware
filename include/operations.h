@@ -221,4 +221,13 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t,
  */
 void gb_interface_dealloc(struct gb_interface *);
 
+/*
+ * Get interface associated with interface id.
+ *
+ * @param interface id
+ *
+ * @param greybus interface
+ */
+struct gb_interface *find_interface_by_id(uint8_t);
+
 #endif

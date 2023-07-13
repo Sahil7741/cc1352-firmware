@@ -164,18 +164,7 @@ static int control_send_request(void *payload, size_t payload_len,
   return 0;
 }
 
-int svc_send_version() {
-  struct gb_svc_version_request req = {.major = GB_SVC_VERSION_MAJOR,
-                                       .minor = GB_SVC_VERSION_MINOR};
-  return control_send_request(&req, sizeof(struct gb_svc_version_request),
-                              GB_SVC_TYPE_PROTOCOL_VERSION_REQUEST);
-}
-
-int svc_send_ping() {
-  return control_send_request(NULL, 0, GB_SVC_TYPE_PING_REQUEST);
-}
-
-int svc_send_hello() {
+static int svc_send_hello() {
   struct gb_svc_hello_request req = {.endo_id = ENDO_ID,
                                      .interface_id = AP_INF_ID};
   return control_send_request(&req, sizeof(struct gb_svc_hello_request),
@@ -187,7 +176,7 @@ static void svc_response_helper(struct gb_message *msg, const void *payload,
   struct gb_message *resp = gb_message_response_alloc(
       payload, payload_len, msg->header.type, msg->header.id, status);
   if (resp == NULL) {
-    LOG_DBG("Failed to allocate response for %X", msg->header.type);
+    LOG_ERR("Failed to allocate response for %X", msg->header.type);
     return;
   }
   k_fifo_put(&svc_ctrl_data.pending_read, resp);
@@ -277,25 +266,14 @@ static void svc_dme_peer_set_handler(struct gb_message *msg) {
                       GB_SVC_OP_SUCCESS);
 }
 
-static struct gb_interface *get_interface(uint8_t intf_id) {
-  switch (intf_id) {
-  case SVC_INF_ID:
-    return &intf;
-  case AP_INF_ID:
-    return ap_intf();
-  default:
-    return node_find_by_id(intf_id);
-  }
-}
-
 static void svc_connection_create_handler(struct gb_message *msg) {
   struct gb_svc_conn_create_request *req =
       (struct gb_svc_conn_create_request *)msg->payload;
   struct gb_interface *intf_1, *intf_2;
   struct gb_connection *conn;
 
-  intf_1 = get_interface(req->intf1_id);
-  intf_2 = get_interface(req->intf2_id);
+  intf_1 = find_interface_by_id(req->intf1_id);
+  intf_2 = find_interface_by_id(req->intf2_id);
 
   conn = gb_create_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
   if (conn == NULL) {
@@ -310,8 +288,8 @@ static void svc_connection_destroy_handler(struct gb_message *msg) {
       (struct gb_svc_conn_destroy_request *)msg->payload;
   struct gb_interface *intf_1, *intf_2;
 
-  intf_1 = get_interface(req->intf1_id);
-  intf_2 = get_interface(req->intf2_id);
+  intf_1 = find_interface_by_id(req->intf1_id);
+  intf_2 = find_interface_by_id(req->intf2_id);
 
   gb_destroy_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
 }
@@ -373,9 +351,6 @@ static void gb_handle_msg(struct gb_message *msg) {
   case GB_SVC_TYPE_PROTOCOL_VERSION_RESPONSE:
     svc_version_response_handler(msg);
     break;
-  case GB_SVC_TYPE_PING_RESPONSE:
-    LOG_DBG("Received Pong");
-    break;
   case GB_SVC_TYPE_HELLO_RESPONSE:
     svc_hello_response_handler(msg);
     break;
@@ -402,13 +377,6 @@ static int svc_inf_write(struct gb_controller *ctrl, struct gb_message *msg,
   return 0;
 }
 
-struct gb_interface *svc_init() {
-  k_fifo_init(&svc_ctrl_data.pending_read);
-  return &intf;
-}
-
-bool svc_is_ready() { return atomic_test_bit(svc_is_read_flag, 0); }
-
 int svc_send_module_inserted(uint8_t primary_intf_id) {
   struct gb_svc_module_inserted_request req = {
       .primary_intf_id = primary_intf_id, .intf_count = 1, .flags = 0};
@@ -416,4 +384,26 @@ int svc_send_module_inserted(uint8_t primary_intf_id) {
   return control_send_request(&req,
                               sizeof(struct gb_svc_module_inserted_request),
                               GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
+}
+
+int svc_send_version() {
+  struct gb_svc_version_request req = {.major = GB_SVC_VERSION_MAJOR,
+                                       .minor = GB_SVC_VERSION_MINOR};
+  return control_send_request(&req, sizeof(struct gb_svc_version_request),
+                              GB_SVC_TYPE_PROTOCOL_VERSION_REQUEST);
+}
+
+struct gb_interface *svc_init() {
+  k_fifo_init(&svc_ctrl_data.pending_read);
+  return &intf;
+}
+
+bool svc_is_ready() { return atomic_test_bit(svc_is_read_flag, 0); }
+
+struct gb_interface *svc_interface() {
+  if (svc_is_ready()) {
+    return &intf;
+  }
+
+  return NULL;
 }
