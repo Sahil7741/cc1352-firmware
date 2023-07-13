@@ -189,7 +189,7 @@ struct gb_interface *find_interface_by_id(uint8_t intf_id) {
   case SVC_INF_ID:
     return svc_interface();
   case AP_INF_ID:
-    return ap_intf();
+    return ap_interface();
   default:
     return node_find_by_id(intf_id);
   }

@@ -68,4 +68,4 @@ int ap_rx_submit(struct gb_message *msg) {
   return 0;
 }
 
-struct gb_interface *ap_intf() { return &intf; }
+struct gb_interface *ap_interface() { return &intf; }

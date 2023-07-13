@@ -79,10 +79,6 @@ static void hdlc_process_greybus_frame(struct hdlc_driver *drv,
   size_t payload_size;
 
   memcpy(&hdr, buffer, sizeof(struct gb_operation_msg_hdr));
-  if (gb_hdr_is_response(&hdr) && hdr.status != GB_OP_SUCCESS) {
-    LOG_ERR("Greybus operation %u failed", hdr.id);
-    return;
-  }
 
   if (hdr.size > buffer_len) {
     LOG_ERR("Greybus Message size is greater than received buffer.");
