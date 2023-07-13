@@ -201,34 +201,16 @@ int hdlc_init(hdlc_process_frame_callback cb)
 	return 0;
 }
 
-int hdlc_rx_submit()
+uint32_t hdlc_rx_start(uint8_t **buf)
 {
-	uint8_t *buf;
-	int ret;
+	return ring_buf_put_claim(&hdlc_rx_ringbuf, buf, HDLC_RX_BUF_SIZE);
+}
 
-	if (!uart_irq_update(uart_dev) && !uart_irq_rx_ready(uart_dev)) {
-		return -EBUSY;
-	}
+int hdlc_rx_finish(uint32_t written) {
+  int ret;
 
-	ret = ring_buf_put_claim(&hdlc_rx_ringbuf, &buf, HDLC_RX_BUF_SIZE);
-	if (ret <= 0) {
-		// No space
-		return 0;
-	}
-
-	ret = uart_fifo_read(uart_dev, buf, ret);
-	if (ret < 0) {
-		// Something went wrong
-		return -EAGAIN;
-	}
-
-	ret = ring_buf_put_finish(&hdlc_rx_ringbuf, ret);
-	if (ret < 0) {
-		// Some error
-		return -EAGAIN;
-	}
-
+	ret = ring_buf_put_finish(&hdlc_rx_ringbuf, written);
 	k_work_submit(&hdlc_rx_work);
 
-	return ret;
+  return ret;
 }

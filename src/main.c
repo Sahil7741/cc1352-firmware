@@ -75,7 +75,33 @@ static int get_all_nodes(struct in6_addr *node_array, const size_t node_array_le
 
 static void serial_callback(const struct device *dev, void *user_data)
 {
-	hdlc_rx_submit();
+	uint8_t *buf;
+	int ret;
+
+	if (!uart_irq_update(uart_dev) && !uart_irq_rx_ready(uart_dev)) {
+		return;
+	}
+
+	ret = hdlc_rx_start(&buf);
+	if (ret == 0) {
+		// No space
+    LOG_ERR("No more space for HDLC receive");
+		return;
+	}
+
+	ret = uart_fifo_read(uart_dev, buf, ret);
+	if (ret < 0) {
+		// Something went wrong
+    LOG_ERR("Failed to read UART");
+		return;
+	}
+
+	ret = hdlc_rx_finish(ret);
+	if (ret < 0) {
+		// Some error
+    LOG_ERR("Filed to write data to hdlc buffer");
+		return;
+	}
 }
 
 static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
@@ -114,10 +140,10 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 		return mcumgr_process_frame(buffer, len);
 	case ADDRESS_DBG:
 		LOG_WRN("Ignore DBG Frame");
-    return 0;
+		return 0;
 	}
 
-  return -1;
+	return -1;
 }
 
 void main(void)

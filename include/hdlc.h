@@ -58,10 +58,21 @@ int hdlc_init(hdlc_process_frame_callback);
 int hdlc_block_send_sync(const uint8_t *, size_t, uint8_t, uint8_t);
 
 /*
- * Read from UART. Mostly called by RX interrupt
+ * Get a buffer to write HDLC message recieved for processing. Make HDLC transport agnostic.
  *
- * @return number of bytes read. Negative in case of error
+ * @param the pointer to underlying buffer which can be userd to write.
+ *
+ * @return number of bytes that can be written
  */
-int hdlc_rx_submit();
+uint32_t hdlc_rx_start(uint8_t **);
+
+/*
+ * Finish writing to rx buffer. Also queues rx buffer for processing
+ *
+ * @param number of bytes written
+ *
+ * @return 0 if successful. Negative in case of error.
+ */
+int hdlc_rx_finish(uint32_t);
 
 #endif
