@@ -15,11 +15,51 @@
 struct gb_controller;
 struct gb_connection;
 
+/*
+ * Callabck for reading from an interface
+ *
+ * @param controller
+ * @param Cport to read from
+ *
+ * @return greybus message if available. Else NULL
+ */
 typedef struct gb_message *(*gb_controller_read_callback_t)(struct gb_controller *, uint16_t);
+
+/*
+ * Callback for writing to an interface
+ *
+ * @param controller
+ * @param greybus message to send
+ * @param Cport to write to
+ *
+ * @return 0 if successful. Negative in case of error
+ */
 typedef int (*gb_controller_write_callback_t)(struct gb_controller *, struct gb_message *,
 					      uint16_t);
+
+/*
+ * Callback to create new connection with a Cport in the interface
+ *
+ * @param controller
+ * @param cport
+ *
+ * @return 0 if successful. Negative in case of error
+ */
 typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_t);
+
+/*
+ * Callback to destroy connection with a Cport in the interface
+ *
+ * @param controller
+ * @param cport
+ */
 typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint16_t);
+
+/*
+ * Callback to process an active greybus connection
+ *
+ * @param active greybus connection
+ */
 typedef void (*gb_connection_callback)(struct gb_connection *);
 
 /*
