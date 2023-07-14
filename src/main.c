@@ -52,7 +52,6 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 		// Go through all connections
 		gb_connections_process_all(connection_callback);
 		k_yield();
-		// k_sleep(K_MSEC(50));
 	}
 }
 

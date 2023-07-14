@@ -18,10 +18,12 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/dlist.h>
 
-LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
-
 #define OPERATION_ID_START 1
 #define INTERFACE_ID_START 2
+#define MAX_GREYBUS_NODES       CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+
+LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
+K_MEM_SLAB_DEFINE_STATIC(gb_connection_slab, sizeof(struct gb_connection), MAX_GREYBUS_NODES, 4);
 
 static atomic_t operation_id_counter = ATOMIC_INIT(OPERATION_ID_START);
 static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
@@ -120,8 +122,9 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 		return NULL;
 	}
 
-	conn = k_malloc(sizeof(struct gb_connection));
-	if (conn == NULL) {
+	// conn = k_malloc(sizeof(struct gb_connection));
+  ret = k_mem_slab_alloc(&gb_connection_slab, (void**)&conn, K_NO_WAIT);
+	if (ret) {
 		LOG_ERR("Failed to allocate Greybus connection");
 		return NULL;
 	}
@@ -147,7 +150,7 @@ void gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf
 	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, ap_cport);
 	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller, peer_cport);
 
-	k_free(conn);
+  k_mem_slab_free(&gb_connection_slab, (void**)&conn);
 }
 
 struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,
@@ -204,10 +207,11 @@ struct gb_interface *find_interface_by_id(uint8_t intf_id)
 	}
 }
 
-void gb_connections_process_all(gb_connection_callback cb) {
+void gb_connections_process_all(gb_connection_callback cb)
+{
 	struct gb_connection *conn;
 
-  SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
-    cb(conn);
-  }
+	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
+		cb(conn);
+	}
 }
