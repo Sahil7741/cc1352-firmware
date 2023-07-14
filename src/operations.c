@@ -150,11 +150,6 @@ void gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf
 	k_free(conn);
 }
 
-sys_dlist_t *gb_connections_list_get()
-{
-	return &gb_connections_list;
-}
-
 struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,
 					    uint8_t request_type, bool is_oneshot)
 {
@@ -207,4 +202,12 @@ struct gb_interface *find_interface_by_id(uint8_t intf_id)
 	default:
 		return node_find_by_id(intf_id);
 	}
+}
+
+void gb_connections_process_all(gb_connection_callback cb) {
+	struct gb_connection *conn;
+
+  SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
+    cb(conn);
+  }
 }

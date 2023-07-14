@@ -13,12 +13,14 @@
 #include <zephyr/sys/dlist.h>
 
 struct gb_controller;
+struct gb_connection;
 
 typedef struct gb_message *(*gb_controller_read_callback_t)(struct gb_controller *, uint16_t);
 typedef int (*gb_controller_write_callback_t)(struct gb_controller *, struct gb_message *,
 					      uint16_t);
 typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_t);
 typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint16_t);
+typedef void (*gb_connection_callback)(struct gb_connection *);
 
 /*
  * Struct to represent greybus message. This is a variable sized type.
@@ -150,11 +152,6 @@ struct gb_connection *gb_create_connection(struct gb_interface *, struct gb_inte
 					   uint16_t);
 
 /*
- * Get greybus connections list. Not sure if this should live in this file
- */
-sys_dlist_t *gb_connections_list_get();
-
-/*
  * Destroy greybus connection
  *
  * @param interface 1
@@ -225,5 +222,12 @@ void gb_interface_dealloc(struct gb_interface *);
  * @param greybus interface
  */
 struct gb_interface *find_interface_by_id(uint8_t);
+
+/*
+ * Execute a function on all active connections
+ *
+ * @param input function to run on the connection
+ */
+void gb_connections_process_all(gb_connection_callback);
 
 #endif

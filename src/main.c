@@ -31,27 +31,26 @@ static void apbridge_entry(void *, void *, void *);
 
 K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 5, 0, 0);
 
-static void apbridge_entry(void *p1, void *p2, void *p3)
+static void connection_callback(struct gb_connection *conn)
 {
-	struct gb_connection *conn;
 	struct gb_message *msg;
 
+	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
+	if (msg != NULL) {
+		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
+						 conn->peer_cport_id);
+	}
+	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
+	if (msg != NULL) {
+		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
+	}
+}
+
+static void apbridge_entry(void *p1, void *p2, void *p3)
+{
 	while (1) {
 		// Go through all connections
-		SYS_DLIST_FOR_EACH_CONTAINER(gb_connections_list_get(), conn, node) {
-			msg = conn->inf_ap->controller.read(&conn->inf_ap->controller,
-							    conn->ap_cport_id);
-			if (msg != NULL) {
-				conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
-								 conn->peer_cport_id);
-			}
-			msg = conn->inf_peer->controller.read(&conn->inf_peer->controller,
-							      conn->peer_cport_id);
-			if (msg != NULL) {
-				conn->inf_ap->controller.write(&conn->inf_ap->controller, msg,
-							       conn->ap_cport_id);
-			}
-		}
+		gb_connections_process_all(connection_callback);
 		k_yield();
 		// k_sleep(K_MSEC(50));
 	}
@@ -85,21 +84,21 @@ static void serial_callback(const struct device *dev, void *user_data)
 	ret = hdlc_rx_start(&buf);
 	if (ret == 0) {
 		// No space
-    LOG_ERR("No more space for HDLC receive");
+		LOG_ERR("No more space for HDLC receive");
 		return;
 	}
 
 	ret = uart_fifo_read(uart_dev, buf, ret);
 	if (ret < 0) {
 		// Something went wrong
-    LOG_ERR("Failed to read UART");
+		LOG_ERR("Failed to read UART");
 		return;
 	}
 
 	ret = hdlc_rx_finish(ret);
 	if (ret < 0) {
 		// Some error
-    LOG_ERR("Filed to write data to hdlc buffer");
+		LOG_ERR("Filed to write data to hdlc buffer");
 		return;
 	}
 }
@@ -160,7 +159,7 @@ void main(void)
 		return;
 	}
 
-  mcumgr_init();
+	mcumgr_init();
 	hdlc_init(hdlc_process_complete_frame);
 	struct gb_interface *ap = ap_init();
 	struct gb_interface *svc = svc_init();

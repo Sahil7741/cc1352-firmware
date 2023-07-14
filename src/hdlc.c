@@ -24,13 +24,19 @@
 #define HDLC_ESC_FRAME 0x5E
 #define HDLC_ESC_ESC   0x5D
 
+#define HDLC_RX_WORKQUEUE_STACK_SIZE 1024
+#define HDLC_RX_WORKQUEUE_PRIORITY   5
+
 static void hdlc_rx_handler(struct k_work *);
 
+K_THREAD_STACK_DEFINE(hdlc_rx_worqueue_stack, HDLC_RX_WORKQUEUE_STACK_SIZE);
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 // TODO: Probably switch to a higher priority thread than apbridge
 K_WORK_DEFINE(hdlc_rx_work, hdlc_rx_handler);
 RING_BUF_DECLARE(hdlc_rx_ringbuf, HDLC_RX_BUF_SIZE);
+
+static struct k_work_q hdlc_rx_workqueue;
 
 struct hdlc_driver {
 	hdlc_process_frame_callback process_callback_frame_cb;
@@ -147,22 +153,21 @@ static int hdlc_process_buffer(uint8_t *buf, size_t len)
 	for (size_t i = 0; i < len; ++i) {
 		hdlc_rx_input_byte(&hdlc_driver, buf[i]);
 	}
-	return 0;
+	return len;
 }
 
 static void hdlc_rx_handler(struct k_work *work)
 {
-	size_t len;
 	uint8_t *data;
 	int ret;
 
-	len = ring_buf_get_claim(&hdlc_rx_ringbuf, &data, HDLC_RX_BUF_SIZE);
-	ret = hdlc_process_buffer(data, len);
+	ret = ring_buf_get_claim(&hdlc_rx_ringbuf, &data, HDLC_RX_BUF_SIZE);
+	ret = hdlc_process_buffer(data, ret);
 	if (ret < 0) {
 		LOG_ERR("Error processing HDLC buffer");
 	}
 
-	ret = ring_buf_get_finish(&hdlc_rx_ringbuf, len);
+	ret = ring_buf_get_finish(&hdlc_rx_ringbuf, ret);
 	if (ret < 0) {
 		LOG_ERR("Cannot flush ring buffer (%d)", ret);
 	}
@@ -198,6 +203,10 @@ int hdlc_init(hdlc_process_frame_callback cb)
 
 	hdlc_driver.process_callback_frame_cb = cb;
 
+	k_work_queue_init(&hdlc_rx_workqueue);
+	k_work_queue_start(&hdlc_rx_workqueue, hdlc_rx_worqueue_stack, HDLC_RX_WORKQUEUE_STACK_SIZE,
+			   HDLC_RX_WORKQUEUE_PRIORITY, NULL);
+
 	return 0;
 }
 
@@ -206,11 +215,12 @@ uint32_t hdlc_rx_start(uint8_t **buf)
 	return ring_buf_put_claim(&hdlc_rx_ringbuf, buf, HDLC_RX_BUF_SIZE);
 }
 
-int hdlc_rx_finish(uint32_t written) {
-  int ret;
+int hdlc_rx_finish(uint32_t written)
+{
+	int ret;
 
 	ret = ring_buf_put_finish(&hdlc_rx_ringbuf, written);
-	k_work_submit(&hdlc_rx_work);
+	k_work_submit_to_queue(&hdlc_rx_workqueue, &hdlc_rx_work);
 
-  return ret;
+	return ret;
 }
