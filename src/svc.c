@@ -388,7 +388,6 @@ int svc_send_module_inserted(uint8_t primary_intf_id)
 {
 	struct gb_svc_module_inserted_request req = {
 		.primary_intf_id = primary_intf_id, .intf_count = 1, .flags = 0};
-
 	return control_send_request(&req, sizeof(struct gb_svc_module_inserted_request),
 				    GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
 }

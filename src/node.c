@@ -78,8 +78,7 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 	memcpy(&msg->header, &hdr, sizeof(struct gb_operation_msg_hdr));
 	msg->payload_size = payload_size;
 	ret = read_data(sock, msg->payload, msg->payload_size);
-	if (ret <= 0) {
-		*flag = ret == 0;
+	if (ret < 0) {
 		goto free_msg;
 	}
 
@@ -143,37 +142,63 @@ fail:
 	return ret;
 }
 
+static int *cports_alloc(size_t len) {
+  int *cports;
+  size_t i;
+  size_t size_in_bytes = sizeof(int) * len;
+  cports = k_malloc(size_in_bytes);
+  if (!cports) {
+    return NULL;
+  }
+
+  for(i = 0; i < len; i++) {
+    cports[i] = -1;
+  }
+
+  return cports;
+}
+
+static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length) {
+  if (new_length == 0) {
+    free(original_cports);
+    return NULL;
+  }
+
+  if (!original_cports) {
+    return cports_alloc(new_length);
+  }
+
+  if (new_length <= original_length) {
+    return original_cports;
+  }
+
+  int *cports = cports_alloc(new_length);
+  if (cports) {
+    memcpy(cports, original_cports, sizeof(int) * original_length);
+    k_free(original_cports);
+  }
+
+  return cports;
+}
+
 static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	int ret;
 	struct sockaddr_in6 node_addr;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-	int *cports = ctrl_data->cports;
 
 	memcpy(&node_addr.sin6_addr, &ctrl_data->addr, sizeof(struct in6_addr));
 	node_addr.sin6_family = AF_INET6;
 	node_addr.sin6_scope_id = 0;
 	node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_id);
 
-	if (ctrl_data->cports_len <= cport_id) {
-		cports = k_malloc(sizeof(int) * (cport_id + 1));
-		if (cports == NULL) {
-			ret = -ENOMEM;
-			goto early_exit;
-		}
+  ctrl_data->cports = cports_realloc(ctrl_data->cports, ctrl_data->cports_len, cport_id + 1);
+  if (!ctrl_data->cports) {
+    return -ENOMEM;
+  }
+  ctrl_data->cports_len = cport_id + 1;
 
-		for (size_t i = 0; i <= cport_id; ++i) {
-			cports[i] = -1;
-		}
-
-		memcpy(cports, ctrl_data->cports, ctrl_data->cports_len * sizeof(int));
-		k_free(ctrl_data->cports);
-
-		ctrl_data->cports = cports;
-		ctrl_data->cports_len = cport_id + 1;
-	}
-
-	if (cports[cport_id] != -1) {
+	if (ctrl_data->cports[cport_id] != -1) {
 		LOG_ERR("Cannot create multiple connections to a cport");
 		ret = -EEXIST;
 		goto early_exit;
@@ -184,7 +209,7 @@ static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cpor
 		return ret;
 	}
 
-	cports[cport_id] = ret;
+	ctrl_data->cports[cport_id] = ret;
 
 early_exit:
 	return ret;
@@ -211,6 +236,7 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
 	if (cport_id >= ctrl_data->cports_len) {
+    LOG_ERR("Cport ID greater than Cports Length");
 		goto early_exit;
 	}
 
@@ -225,7 +251,7 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	if (fd[0].revents & ZSOCK_POLLIN) {
 		msg = gb_message_receive(fd[0].fd, &flag);
 		if (flag) {
-			LOG_ERR("Socket closed by Peer Node");
+			LOG_ERR("Socket of Cport %u closed by Peer Node", cport_id);
 		}
 	}
 

@@ -131,8 +131,8 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 
 	conn->inf_ap = inf_ap;
 	conn->inf_peer = inf_peer;
-	conn->peer_cport_id = peer_cport;
 	conn->ap_cport_id = ap_cport;
+	conn->peer_cport_id = peer_cport;
 
 	sys_dnode_init(&conn->node);
 	sys_dlist_append(&gb_connections_list, &conn->node);

@@ -29,7 +29,7 @@ LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static void apbridge_entry(void *, void *, void *);
 
-K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 5, 0, 0);
+K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 6, 0, 0);
 
 static void connection_callback(struct gb_connection *conn)
 {
@@ -37,11 +37,13 @@ static void connection_callback(struct gb_connection *conn)
 
 	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
 	if (msg != NULL) {
+    LOG_DBG("Got message %u from AP with cport ID %u", msg->header.id, conn->ap_cport_id);
 		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
 						 conn->peer_cport_id);
 	}
 	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
 	if (msg != NULL) {
+    LOG_DBG("Got message %u from Peer with cport ID %u", msg->header.id, conn->peer_cport_id);
 		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
 	}
 }
