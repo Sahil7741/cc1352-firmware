@@ -140,10 +140,14 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 	return conn;
 }
 
-void gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_peer,
+int gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_peer,
 			   uint16_t ap_cport, uint16_t peer_cport)
 {
 	struct gb_connection *conn = gb_connection_get(inf_ap, inf_peer);
+
+  if (!conn) {
+    return -1;
+  }
 
 	sys_dlist_remove(&conn->node);
 
@@ -151,6 +155,7 @@ void gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf
 	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller, peer_cport);
 
   k_mem_slab_free(&gb_connection_slab, (void**)&conn);
+  return 0;
 }
 
 struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,

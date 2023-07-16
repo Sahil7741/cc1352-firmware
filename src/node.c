@@ -142,43 +142,45 @@ fail:
 	return ret;
 }
 
-static int *cports_alloc(size_t len) {
-  int *cports;
-  size_t i;
-  size_t size_in_bytes = sizeof(int) * len;
-  cports = k_malloc(size_in_bytes);
-  if (!cports) {
-    return NULL;
-  }
+static int *cports_alloc(size_t len)
+{
+	int *cports;
+	size_t i;
+	size_t size_in_bytes = sizeof(int) * len;
+	cports = k_malloc(size_in_bytes);
+	if (!cports) {
+		return NULL;
+	}
 
-  for(i = 0; i < len; i++) {
-    cports[i] = -1;
-  }
+	for (i = 0; i < len; i++) {
+		cports[i] = -1;
+	}
 
-  return cports;
+	return cports;
 }
 
-static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length) {
-  if (new_length == 0) {
-    free(original_cports);
-    return NULL;
-  }
+static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length)
+{
+	if (new_length == 0) {
+		free(original_cports);
+		return NULL;
+	}
 
-  if (!original_cports) {
-    return cports_alloc(new_length);
-  }
+	if (!original_cports) {
+		return cports_alloc(new_length);
+	}
 
-  if (new_length <= original_length) {
-    return original_cports;
-  }
+	if (new_length <= original_length) {
+		return original_cports;
+	}
 
-  int *cports = cports_alloc(new_length);
-  if (cports) {
-    memcpy(cports, original_cports, sizeof(int) * original_length);
-    k_free(original_cports);
-  }
+	int *cports = cports_alloc(new_length);
+	if (cports) {
+		memcpy(cports, original_cports, sizeof(int) * original_length);
+		k_free(original_cports);
+	}
 
-  return cports;
+	return cports;
 }
 
 static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
@@ -192,11 +194,11 @@ static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cpor
 	node_addr.sin6_scope_id = 0;
 	node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_id);
 
-  ctrl_data->cports = cports_realloc(ctrl_data->cports, ctrl_data->cports_len, cport_id + 1);
-  if (!ctrl_data->cports) {
-    return -ENOMEM;
-  }
-  ctrl_data->cports_len = cport_id + 1;
+	ctrl_data->cports = cports_realloc(ctrl_data->cports, ctrl_data->cports_len, cport_id + 1);
+	if (!ctrl_data->cports) {
+		return -ENOMEM;
+	}
+	ctrl_data->cports_len = cport_id + 1;
 
 	if (ctrl_data->cports[cport_id] != -1) {
 		LOG_ERR("Cannot create multiple connections to a cport");
@@ -236,7 +238,12 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
 	if (cport_id >= ctrl_data->cports_len) {
-    LOG_ERR("Cport ID greater than Cports Length");
+		LOG_ERR("Cport ID greater than Cports Length");
+		goto early_exit;
+	}
+
+	if (ctrl_data->cports[cport_id] < 0) {
+		LOG_ERR("Cport ID %u is not active", cport_id);
 		goto early_exit;
 	}
 
@@ -261,12 +268,24 @@ early_exit:
 
 static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
+  int ret;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 	if (cport_id >= ctrl_data->cports_len) {
-		return -1;
+    ret = -1;
+    goto free_msg;
 	}
 
-	return gb_message_send(ctrl_data->cports[cport_id], msg);
+	if (ctrl_data->cports[cport_id] < 0) {
+		LOG_ERR("Cport ID %u is not active", cport_id);
+    ret = -1;
+    goto free_msg;
+	}
+
+	ret = gb_message_send(ctrl_data->cports[cport_id], msg);
+
+free_msg:
+  gb_message_dealloc(msg);
+  return ret;
 }
 
 struct gb_interface *node_create_interface(struct in6_addr *addr)

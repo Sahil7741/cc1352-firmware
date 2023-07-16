@@ -198,8 +198,10 @@ struct gb_connection *gb_create_connection(struct gb_interface *, struct gb_inte
  * @param interface 2
  * @param interface 1 cport
  * @param interface 2 cport
+ *
+ * @return 0 on success. Negative in case of error
  */
-void gb_destroy_connection(struct gb_interface *, struct gb_interface *, uint16_t, uint16_t);
+int gb_destroy_connection(struct gb_interface *, struct gb_interface *, uint16_t, uint16_t);
 
 /*
  * Allocate a greybus request message

@@ -41,6 +41,7 @@ static void connection_callback(struct gb_connection *conn)
 		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
 						 conn->peer_cport_id);
 	}
+
 	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
 	if (msg != NULL) {
     LOG_DBG("Got message %u from Peer with cport ID %u", msg->header.id, conn->peer_cport_id);
@@ -53,7 +54,8 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 	while (1) {
 		// Go through all connections
 		gb_connections_process_all(connection_callback);
-		k_yield();
+		// k_yield();
+    k_sleep(K_MSEC(50));
 	}
 }
 
