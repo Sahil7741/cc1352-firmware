@@ -286,15 +286,19 @@ static void svc_connection_create_handler(struct gb_message *msg)
 
 	conn = gb_create_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (conn == NULL) {
+		LOG_ERR("Failed to create connection");
 		svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
 	} else {
+		LOG_DBG("Successfully create connection between Cport 1: %u of Interface 1: %u and "
+			"Cport 2: %u of Interface 2: %u",
+			req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
 		svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
 	}
 }
 
 static void svc_connection_destroy_handler(struct gb_message *msg)
 {
-  int ret;
+	int ret;
 	struct gb_svc_conn_destroy_request *req =
 		(struct gb_svc_conn_destroy_request *)msg->payload;
 	struct gb_interface *intf_1, *intf_2;
@@ -303,19 +307,32 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 	intf_2 = find_interface_by_id(req->intf2_id);
 
 	ret = gb_destroy_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
-  if (ret < 0) {
-    LOG_ERR("Failed to destroy connection %d", ret);
+	if (ret < 0) {
+		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
+			"and Cport 2: %u of Interface 2: %u",
+			ret, req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
 		svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
 	} else {
-    LOG_DBG("Successfully destroyed connection");
+		LOG_DBG("Successfully destroyed connection between Cport 1: %u of Interface 1: %u "
+			"and Cport 2: %u of Interface 2: %u",
+			req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
 		svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
-  }
+	}
 }
 
 static void svc_interface_resume_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_resume_response resp = {.status = GB_SVC_INTF_TYPE_GREYBUS};
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response), GB_OP_SUCCESS);
+}
+
+static void svc_module_inserted_response_handler(struct gb_message *msg) {
+  if (gb_message_is_success(msg)) {
+		LOG_DBG("Successful Module Inserted Response");
+  } else {
+    // TODO: Add functionality to remove the interface in case of error
+    LOG_DBG("Module Inserted Event failed");
+  }
 }
 
 static void gb_handle_msg(struct gb_message *msg)
@@ -372,7 +389,7 @@ static void gb_handle_msg(struct gb_message *msg)
 		svc_hello_response_handler(msg);
 		break;
 	case GB_SVC_TYPE_MODULE_INSERTED_RESPONSE:
-		LOG_DBG("Successful Module Inserted Response");
+    svc_module_inserted_response_handler(msg);
 		break;
 	default:
 		LOG_WRN("Handling SVC operation Type %X not supported yet", msg->header.type);
@@ -410,6 +427,7 @@ int svc_send_version()
 
 struct gb_interface *svc_init()
 {
+	atomic_set_bit_to(svc_is_read_flag, 0, false);
 	k_fifo_init(&svc_ctrl_data.pending_read);
 	return &intf;
 }

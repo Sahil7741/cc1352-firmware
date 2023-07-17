@@ -243,7 +243,7 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	}
 
 	if (ctrl_data->cports[cport_id] < 0) {
-		LOG_ERR("Cport ID %u is not active", cport_id);
+		LOG_ERR("Cport ID %u is not active for reading", cport_id);
 		goto early_exit;
 	}
 
@@ -276,7 +276,7 @@ static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, ui
 	}
 
 	if (ctrl_data->cports[cport_id] < 0) {
-		LOG_ERR("Cport ID %u is not active", cport_id);
+		LOG_ERR("Cport ID %u is not active for writing", cport_id);
     ret = -1;
     goto free_msg;
 	}

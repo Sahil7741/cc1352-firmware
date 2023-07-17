@@ -20,7 +20,7 @@
 
 #define OPERATION_ID_START 1
 #define INTERFACE_ID_START 2
-#define MAX_GREYBUS_NODES       CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define MAX_GREYBUS_NODES  CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 K_MEM_SLAB_DEFINE_STATIC(gb_connection_slab, sizeof(struct gb_connection), MAX_GREYBUS_NODES, 4);
@@ -123,7 +123,7 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 	}
 
 	// conn = k_malloc(sizeof(struct gb_connection));
-  ret = k_mem_slab_alloc(&gb_connection_slab, (void**)&conn, K_NO_WAIT);
+	ret = k_mem_slab_alloc(&gb_connection_slab, (void **)&conn, K_NO_WAIT);
 	if (ret) {
 		LOG_ERR("Failed to allocate Greybus connection");
 		return NULL;
@@ -140,22 +140,52 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 	return conn;
 }
 
+static void gb_flush_connection(struct gb_connection *conn)
+{
+	struct gb_message *msg;
+  bool flag;
+
+	do {
+    flag = false;
+		msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
+		if (msg != NULL) {
+			// LOG_DBG("Got message %u from AP with cport ID %u", msg->header.id,
+			// conn->ap_cport_id);
+			conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
+							 conn->peer_cport_id);
+      flag = true;
+		}
+
+		msg = conn->inf_peer->controller.read(&conn->inf_peer->controller,
+						      conn->peer_cport_id);
+		if (msg != NULL) {
+			// LOG_DBG("Got message %u from Peer with cport ID %u", msg->header.id,
+			// conn->peer_cport_id);
+			conn->inf_ap->controller.write(&conn->inf_ap->controller, msg,
+						       conn->ap_cport_id);
+      flag = true;
+		}
+	} while (flag);
+}
+
 int gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_peer,
-			   uint16_t ap_cport, uint16_t peer_cport)
+			  uint16_t ap_cport, uint16_t peer_cport)
 {
 	struct gb_connection *conn = gb_connection_get(inf_ap, inf_peer);
 
-  if (!conn) {
-    return -1;
-  }
+	if (!conn) {
+		return -1;
+	}
 
 	sys_dlist_remove(&conn->node);
+
+  gb_flush_connection(conn);
 
 	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, ap_cport);
 	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller, peer_cport);
 
-  k_mem_slab_free(&gb_connection_slab, (void**)&conn);
-  return 0;
+	k_mem_slab_free(&gb_connection_slab, (void **)&conn);
+	return 0;
 }
 
 struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,
