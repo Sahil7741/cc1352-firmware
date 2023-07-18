@@ -305,6 +305,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr)
 		goto free_ctrl_data;
 	}
 
+  LOG_DBG("Create new interface with ID %u", inf->id);
 	sys_dlist_append(&node_interface_list, &inf->node);
 
 	return inf;

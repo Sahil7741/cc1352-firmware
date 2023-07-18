@@ -18,12 +18,15 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/dlist.h>
 
-#define OPERATION_ID_START 1
-#define INTERFACE_ID_START 2
-#define MAX_GREYBUS_NODES  CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define OPERATION_ID_START     1
+#define INTERFACE_ID_START     2
+#define MAX_GREYBUS_NODES      CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define MAX_GREYBUS_INTERFACES CONFIG_BEAGLEPLAY_GREYBUS_MAX_INTERFACES
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
+
 K_MEM_SLAB_DEFINE_STATIC(gb_connection_slab, sizeof(struct gb_connection), MAX_GREYBUS_NODES, 4);
+K_MEM_SLAB_DEFINE_STATIC(gb_interface_slab, sizeof(struct gb_interface), MAX_GREYBUS_INTERFACES, 8);
 
 static atomic_t operation_id_counter = ATOMIC_INIT(OPERATION_ID_START);
 static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
@@ -122,7 +125,6 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 		return NULL;
 	}
 
-	// conn = k_malloc(sizeof(struct gb_connection));
 	ret = k_mem_slab_alloc(&gb_connection_slab, (void **)&conn, K_NO_WAIT);
 	if (ret) {
 		LOG_ERR("Failed to allocate Greybus connection");
@@ -143,17 +145,17 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 static void gb_flush_connection(struct gb_connection *conn)
 {
 	struct gb_message *msg;
-  bool flag;
+	bool flag;
 
 	do {
-    flag = false;
+		flag = false;
 		msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
 		if (msg != NULL) {
 			// LOG_DBG("Got message %u from AP with cport ID %u", msg->header.id,
 			// conn->ap_cport_id);
 			conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
 							 conn->peer_cport_id);
-      flag = true;
+			flag = true;
 		}
 
 		msg = conn->inf_peer->controller.read(&conn->inf_peer->controller,
@@ -163,7 +165,7 @@ static void gb_flush_connection(struct gb_connection *conn)
 			// conn->peer_cport_id);
 			conn->inf_ap->controller.write(&conn->inf_ap->controller, msg,
 						       conn->ap_cport_id);
-      flag = true;
+			flag = true;
 		}
 	} while (flag);
 }
@@ -179,7 +181,7 @@ int gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_
 
 	sys_dlist_remove(&conn->node);
 
-  gb_flush_connection(conn);
+	gb_flush_connection(conn);
 
 	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, ap_cport);
 	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller, peer_cport);
@@ -209,8 +211,10 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
 					gb_controller_destroy_connection_t destroy_connection,
 					void *ctrl_data)
 {
-	struct gb_interface *intf = k_malloc(sizeof(struct gb_interface));
-	if (intf == NULL) {
+	int ret;
+	struct gb_interface *intf;
+	ret = k_mem_slab_alloc(&gb_interface_slab, (void **)&intf, K_NO_WAIT);
+	if (ret < 0) {
 		return NULL;
 	}
 
@@ -227,7 +231,7 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
 
 void gb_interface_dealloc(struct gb_interface *intf)
 {
-	k_free(intf);
+  k_mem_slab_free(&gb_interface_slab, (void**)&intf);
 }
 
 struct gb_interface *find_interface_by_id(uint8_t intf_id)

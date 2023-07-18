@@ -1,7 +1,11 @@
 mainmenu "CC1352 GREYBUS Host Application"
 
 config BEAGLEPLAY_GREYBUS_MAX_NODES
-  int "Maximum number of cports supported by AP"
+  int "Maximum number of cports supported by SVC"
+  default 1
+
+config BEAGLEPLAY_GREYBUS_MAX_INTERFACES
+  int "Maximum number of interfaces supported by SVC"
   default 1
 
 config BEAGLEPLAY_HDLC_MAX_BLOCK_SIZE
