@@ -282,18 +282,31 @@ static void svc_connection_create_handler(struct gb_message *msg)
 	struct gb_connection *conn;
 
 	intf_1 = find_interface_by_id(req->intf1_id);
+	if (!intf_1) {
+		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
+		goto fail;
+	}
 	intf_2 = find_interface_by_id(req->intf2_id);
+	if (!intf_2) {
+		LOG_DBG("Unknown Interface 2: %u", req->intf2_id);
+		goto fail;
+	}
 
 	conn = gb_create_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
-	if (conn == NULL) {
+	if (!conn) {
 		LOG_ERR("Failed to create connection");
-		svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
-	} else {
-		LOG_DBG("Successfully create connection between Cport 1: %u of Interface 1: %u and "
-			"Cport 2: %u of Interface 2: %u",
-			req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
-		svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
+		goto fail;
 	}
+
+	LOG_DBG("Successfully create connection between Cport 1: %u of Interface 1: %u and "
+		"Cport 2: %u of Interface 2: %u",
+		req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
+
+	svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
+	return;
+
+fail:
+	svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
 }
 
 static void svc_connection_destroy_handler(struct gb_message *msg)
@@ -304,20 +317,32 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 	struct gb_interface *intf_1, *intf_2;
 
 	intf_1 = find_interface_by_id(req->intf1_id);
+	if (!intf_1) {
+		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
+		goto fail;
+	}
 	intf_2 = find_interface_by_id(req->intf2_id);
+	if (!intf_2) {
+		LOG_DBG("Unknown Interface 2: %u", req->intf2_id);
+		goto fail;
+	}
 
 	ret = gb_destroy_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (ret < 0) {
 		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
 			"and Cport 2: %u of Interface 2: %u",
 			ret, req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
-		svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
-	} else {
-		LOG_DBG("Successfully destroyed connection between Cport 1: %u of Interface 1: %u "
-			"and Cport 2: %u of Interface 2: %u",
-			req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
-		svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
+		goto fail;
 	}
+
+	LOG_DBG("Successfully destroyed connection between Cport 1: %u of Interface 1: %u "
+		"and Cport 2: %u of Interface 2: %u",
+		req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
+	svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
+	return;
+
+fail:
+	svc_response_helper(msg, NULL, 0, GB_SVC_OP_UNKNOWN_ERROR);
 }
 
 static void svc_interface_resume_handler(struct gb_message *msg)
@@ -326,13 +351,14 @@ static void svc_interface_resume_handler(struct gb_message *msg)
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response), GB_OP_SUCCESS);
 }
 
-static void svc_module_inserted_response_handler(struct gb_message *msg) {
-  if (gb_message_is_success(msg)) {
+static void svc_module_inserted_response_handler(struct gb_message *msg)
+{
+	if (gb_message_is_success(msg)) {
 		LOG_DBG("Successful Module Inserted Response");
-  } else {
-    // TODO: Add functionality to remove the interface in case of error
-    LOG_DBG("Module Inserted Event failed");
-  }
+	} else {
+		// TODO: Add functionality to remove the interface in case of error
+		LOG_DBG("Module Inserted Event failed");
+	}
 }
 
 static void gb_handle_msg(struct gb_message *msg)
@@ -389,7 +415,7 @@ static void gb_handle_msg(struct gb_message *msg)
 		svc_hello_response_handler(msg);
 		break;
 	case GB_SVC_TYPE_MODULE_INSERTED_RESPONSE:
-    svc_module_inserted_response_handler(msg);
+		svc_module_inserted_response_handler(msg);
 		break;
 	default:
 		LOG_WRN("Handling SVC operation Type %X not supported yet", msg->header.type);
