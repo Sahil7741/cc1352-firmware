@@ -35,16 +35,17 @@ static void connection_callback(struct gb_connection *conn)
 {
 	struct gb_message *msg;
 
+	// LOG_DBG("Process Cport 1: %u Interface 1: %u and Cport 2: %u Interface 2: %u",
+	// 	conn->ap_cport_id, conn->inf_ap->id, conn->peer_cport_id, conn->inf_peer->id);
+
 	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
 	if (msg != NULL) {
-    // LOG_DBG("Got message %u from AP with cport ID %u", msg->header.id, conn->ap_cport_id);
 		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
 						 conn->peer_cport_id);
 	}
 
 	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
 	if (msg != NULL) {
-    // LOG_DBG("Got message %u from Peer with cport ID %u", msg->header.id, conn->peer_cport_id);
 		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
 	}
 }
@@ -54,8 +55,9 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 	while (1) {
 		// Go through all connections
 		gb_connections_process_all(connection_callback);
+    // LOG_DBG("All Connections Processed");
 		// k_yield();
-    k_sleep(K_MSEC(50));
+		k_sleep(K_MSEC(50));
 	}
 }
 
@@ -191,7 +193,7 @@ void main(void)
 	}
 
 	while (1) {
-    LOG_DBG("Try Node Discovery");
+		LOG_DBG("Try Node Discovery");
 		ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
 		if (ret < 0) {
 			LOG_WRN("Failed to get greybus nodes");
@@ -201,7 +203,7 @@ void main(void)
 		for (size_t i = 0; i < ret; ++i) {
 			intf = node_find_by_addr(&node_array[i]);
 			if (!intf) {
-        LOG_DBG("Found new node");
+				LOG_DBG("Found new node");
 				intf = node_create_interface(&node_array[i]);
 				svc_send_module_inserted(intf->id);
 			}

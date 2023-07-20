@@ -33,15 +33,18 @@ static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
 static sys_dlist_t gb_connections_list = SYS_DLIST_STATIC_INIT(&gb_connections_list);
 
 static struct gb_connection *gb_connection_get(struct gb_interface *inf_ap,
-					       struct gb_interface *inf_peer)
+					       struct gb_interface *inf_peer, uint16_t ap_cport,
+					       uint16_t peer_cport)
 {
 	struct gb_connection *conn;
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
 		// While the names are inf_peer and inf_ap, they are just arbitrary. So do
 		// comparisons in reverse as well
-		if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap) ||
-		    (conn->inf_peer == inf_ap && conn->inf_ap == inf_peer)) {
+		if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap &&
+		     conn->peer_cport_id == peer_cport && conn->ap_cport_id == ap_cport) ||
+		    (conn->inf_peer == inf_ap && conn->inf_ap == inf_peer &&
+		     conn->peer_cport_id == ap_cport && conn->ap_cport_id == peer_cport)) {
 			return conn;
 		}
 	}
@@ -151,8 +154,6 @@ static void gb_flush_connection(struct gb_connection *conn)
 		flag = false;
 		msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
 		if (msg != NULL) {
-			// LOG_DBG("Got message %u from AP with cport ID %u", msg->header.id,
-			// conn->ap_cport_id);
 			conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
 							 conn->peer_cport_id);
 			flag = true;
@@ -161,8 +162,6 @@ static void gb_flush_connection(struct gb_connection *conn)
 		msg = conn->inf_peer->controller.read(&conn->inf_peer->controller,
 						      conn->peer_cport_id);
 		if (msg != NULL) {
-			// LOG_DBG("Got message %u from Peer with cport ID %u", msg->header.id,
-			// conn->peer_cport_id);
 			conn->inf_ap->controller.write(&conn->inf_ap->controller, msg,
 						       conn->ap_cport_id);
 			flag = true;
@@ -173,7 +172,7 @@ static void gb_flush_connection(struct gb_connection *conn)
 int gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_peer,
 			  uint16_t ap_cport, uint16_t peer_cport)
 {
-	struct gb_connection *conn = gb_connection_get(inf_ap, inf_peer);
+	struct gb_connection *conn = gb_connection_get(inf_ap, inf_peer, ap_cport, peer_cport);
 
 	if (!conn) {
 		return -1;
@@ -231,7 +230,7 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
 
 void gb_interface_dealloc(struct gb_interface *intf)
 {
-  k_mem_slab_free(&gb_interface_slab, (void**)&intf);
+	k_mem_slab_free(&gb_interface_slab, (void **)&intf);
 }
 
 struct gb_interface *find_interface_by_id(uint8_t intf_id)

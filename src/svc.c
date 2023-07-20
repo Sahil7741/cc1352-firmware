@@ -234,7 +234,6 @@ static void svc_intf_set_pwrm_handler(struct gb_message *msg)
 static void svc_intf_vsys_enable_disable_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_vsys_response resp = {.result_code = GB_SVC_INTF_VSYS_OK};
-
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_vsys_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -298,10 +297,6 @@ static void svc_connection_create_handler(struct gb_message *msg)
 		goto fail;
 	}
 
-	LOG_DBG("Successfully create connection between Cport 1: %u of Interface 1: %u and "
-		"Cport 2: %u of Interface 2: %u",
-		req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
-
 	svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
 	return;
 
@@ -331,13 +326,10 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 	if (ret < 0) {
 		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
 			"and Cport 2: %u of Interface 2: %u",
-			ret, req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
+			ret, req->cport1_id, req->intf1_id, req->cport2_id, req->intf2_id);
 		goto fail;
 	}
 
-	LOG_DBG("Successfully destroyed connection between Cport 1: %u of Interface 1: %u "
-		"and Cport 2: %u of Interface 2: %u",
-		req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
 	svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
 	return;
 
