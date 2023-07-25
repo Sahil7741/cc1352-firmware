@@ -165,6 +165,7 @@ void main(void)
 	}
 
 	mcumgr_init();
+
 	hdlc_init(hdlc_process_complete_frame);
 	struct gb_interface *ap = ap_init();
 	struct gb_interface *svc = svc_init();
