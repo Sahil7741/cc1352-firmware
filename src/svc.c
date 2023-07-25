@@ -33,11 +33,18 @@ static int svc_inf_write(struct gb_controller *, struct gb_message *, uint16_t);
 static int svc_inf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	ARG_UNUSED(ctrl);
+
 	return cport_id == 0 && !svc_is_ready();
 }
 
 static void svc_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
+	ARG_UNUSED(ctrl);
+
+	if (cport_id != 0) {
+		LOG_ERR("Unknown SVC Cport");
+		return;
+	}
 
 	struct gb_message *msg;
 
@@ -198,6 +205,8 @@ static void svc_version_response_handler(struct gb_message *msg)
 
 static void svc_hello_response_handler(struct gb_message *msg)
 {
+	ARG_UNUSED(msg);
+
 	LOG_DBG("Hello Response Success");
 	atomic_set_bit(svc_is_read_flag, 0);
 }
@@ -416,12 +425,24 @@ static void gb_handle_msg(struct gb_message *msg)
 
 static struct gb_message *svc_inf_read(struct gb_controller *ctrl, uint16_t cport_id)
 {
+	ARG_UNUSED(ctrl);
+
+	if (cport_id != 0) {
+		LOG_ERR("Unknown SVC Cport");
+		return NULL;
+	}
+
 	struct gb_message *msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
 	return msg;
 }
 
 static int svc_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
+	if (cport_id != 0) {
+		LOG_ERR("Unknown SVC Cport");
+		return -1;
+	}
+
 	gb_handle_msg(msg);
 	gb_message_dealloc(msg);
 	return 0;

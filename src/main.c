@@ -35,9 +35,6 @@ static void connection_callback(struct gb_connection *conn)
 {
 	struct gb_message *msg;
 
-	// LOG_DBG("Process Cport 1: %u Interface 1: %u and Cport 2: %u Interface 2: %u",
-	// 	conn->ap_cport_id, conn->inf_ap->id, conn->peer_cport_id, conn->inf_peer->id);
-
 	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
 	if (msg != NULL) {
 		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
@@ -52,12 +49,15 @@ static void connection_callback(struct gb_connection *conn)
 
 static void apbridge_entry(void *p1, void *p2, void *p3)
 {
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
 	while (1) {
 		// Go through all connections
 		gb_connections_process_all(connection_callback);
-    // LOG_DBG("All Connections Processed");
-		// k_yield();
-		k_sleep(K_MSEC(50));
+		k_yield();
+		// k_sleep(K_MSEC(50));
 	}
 }
 
@@ -79,10 +79,12 @@ static int get_all_nodes(struct in6_addr *node_array, const size_t node_array_le
 
 static void serial_callback(const struct device *dev, void *user_data)
 {
+	ARG_UNUSED(user_data);
+
 	uint8_t *buf;
 	int ret;
 
-	if (!uart_irq_update(uart_dev) && !uart_irq_rx_ready(uart_dev)) {
+	if (!uart_irq_update(dev) && !uart_irq_rx_ready(dev)) {
 		return;
 	}
 
@@ -93,7 +95,7 @@ static void serial_callback(const struct device *dev, void *user_data)
 		return;
 	}
 
-	ret = uart_fifo_read(uart_dev, buf, ret);
+	ret = uart_fifo_read(dev, buf, ret);
 	if (ret < 0) {
 		// Something went wrong
 		LOG_ERR("Failed to read UART");

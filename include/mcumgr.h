@@ -13,18 +13,20 @@
 #ifdef CONFIG_BEAGLEPLAY_GREYBUS_MCUMGR
 int mcumgr_init();
 #else
-static int mcumgr_init() {
-  return 0;
+static int mcumgr_init()
+{
+	return 0;
 }
 #endif
 
 #ifdef CONFIG_BEAGLEPLAY_GREYBUS_MCUMGR
 int mcumgr_process_frame(const void *, size_t);
 #else
-static int mcumgr_process_frame(const void *buffer, size_t buffer_len) {
-  ARG_UNUSED(buffer);
-  ARG_UNUSED(buffer_len);
-  return 0;
+static int mcumgr_process_frame(const void *buffer, size_t buffer_len)
+{
+	ARG_UNUSED(buffer);
+	ARG_UNUSED(buffer_len);
+	return 0;
 }
 #endif
 

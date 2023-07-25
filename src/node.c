@@ -268,24 +268,24 @@ early_exit:
 
 static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
-  int ret;
+	int ret;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 	if (cport_id >= ctrl_data->cports_len) {
-    ret = -1;
-    goto free_msg;
+		ret = -1;
+		goto free_msg;
 	}
 
 	if (ctrl_data->cports[cport_id] < 0) {
 		LOG_ERR("Cport ID %u is not active for writing", cport_id);
-    ret = -1;
-    goto free_msg;
+		ret = -1;
+		goto free_msg;
 	}
 
 	ret = gb_message_send(ctrl_data->cports[cport_id], msg);
 
 free_msg:
-  gb_message_dealloc(msg);
-  return ret;
+	gb_message_dealloc(msg);
+	return ret;
 }
 
 struct gb_interface *node_create_interface(struct in6_addr *addr)
@@ -305,7 +305,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr)
 		goto free_ctrl_data;
 	}
 
-  LOG_DBG("Create new interface with ID %u", inf->id);
+	LOG_DBG("Create new interface with ID %u", inf->id);
 	sys_dlist_append(&node_interface_list, &inf->node);
 
 	return inf;

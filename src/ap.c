@@ -15,6 +15,8 @@ struct ap_controller_data {
 
 static int ap_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
+	ARG_UNUSED(ctrl);
+
 	memcpy(msg->header.pad, &cport_id, sizeof(uint16_t));
 	gb_message_hdlc_send(msg);
 	gb_message_dealloc(msg);

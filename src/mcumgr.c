@@ -39,6 +39,8 @@ static int smp_hdlc_tx_pkt(struct net_buf *nb)
 
 static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb)
 {
+	ARG_UNUSED(nb);
+
 	return 256;
 }
 

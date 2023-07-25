@@ -158,6 +158,8 @@ static int hdlc_process_buffer(uint8_t *buf, size_t len)
 
 static void hdlc_rx_handler(struct k_work *work)
 {
+	ARG_UNUSED(work);
+
 	uint8_t *data;
 	int ret;
 
