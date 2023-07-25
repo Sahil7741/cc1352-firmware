@@ -7,5 +7,4 @@ project(cc1352_firmware)
 
 target_include_directories(app PRIVATE include)
 
-FILE(GLOB app_sources src/*.c)
-target_sources(app PRIVATE ${app_sources})
+add_subdirectory(src)

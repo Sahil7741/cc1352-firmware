@@ -1,0 +1,8 @@
+target_sources(app PRIVATE main.c)
+target_sources(app PRIVATE ap.c)
+target_sources(app PRIVATE hdlc.c)
+target_sources(app PRIVATE node.c)
+target_sources(app PRIVATE svc.c)
+target_sources(app PRIVATE hdlc_log_backend.c)
+target_sources(app PRIVATE mcumgr.c)
+target_sources(app PRIVATE operations.c)
