@@ -12,6 +12,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 
+#define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct node_control_data {
@@ -19,6 +21,9 @@ struct node_control_data {
 	uint16_t cports_len;
 	struct in6_addr addr;
 };
+
+K_MEM_SLAB_DEFINE_STATIC(node_control_data_slab, sizeof(struct node_control_data),
+			 MAX_GREYBUS_NODES, 8);
 
 static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
 
@@ -290,10 +295,15 @@ free_msg:
 
 struct gb_interface *node_create_interface(struct in6_addr *addr)
 {
-	struct node_control_data *ctrl_data = k_malloc(sizeof(struct node_control_data));
-	if (ctrl_data == NULL) {
+	int ret;
+	struct node_control_data *ctrl_data;
+
+	ret = k_mem_slab_alloc(&node_control_data_slab, (void**)&ctrl_data, K_NO_WAIT);
+	if (ret) {
+		LOG_ERR("Failed to allocate Greybus connection");
 		goto early_exit;
 	}
+
 	ctrl_data->cports = NULL;
 	ctrl_data->cports_len = 0;
 	memcpy(&ctrl_data->addr, addr, sizeof(struct in6_addr));
@@ -311,7 +321,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr)
 	return inf;
 
 free_ctrl_data:
-	k_free(ctrl_data);
+  k_mem_slab_free(&node_control_data_slab, (void**)&ctrl_data);
 early_exit:
 	return NULL;
 }
@@ -323,7 +333,7 @@ void node_destroy_interface(struct gb_interface *inf)
 	}
 
 	sys_dlist_remove(&inf->node);
-	k_free(inf->controller.ctrl_data);
+  k_mem_slab_free(&node_control_data_slab, (void**)&inf->controller.ctrl_data);
 	gb_interface_dealloc(inf);
 }
 
