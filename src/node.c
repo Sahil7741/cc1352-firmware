@@ -31,6 +31,7 @@ static int write_data(int sock, const void *data, size_t len)
 {
 	int ret;
 	int transmitted = 0;
+
 	while (transmitted < len) {
 		ret = zsock_send(sock, transmitted + (char *)data, len - transmitted, 0);
 		if (ret < 0) {
@@ -46,13 +47,14 @@ static int read_data(int sock, void *data, size_t len)
 {
 	int ret;
 	int recieved = 0;
+
 	while (recieved < len) {
 		ret = zsock_recv(sock, recieved + (char *)data, len - recieved, 0);
 		if (ret < 0) {
 			LOG_ERR("Failed to recieve data");
 			return ret;
 		} else if (ret == 0) {
-			// Socket was closed by peer
+			/* Socket was closed by peer */
 			return 0;
 		}
 		recieved += ret;
@@ -152,6 +154,7 @@ static int *cports_alloc(size_t len)
 	int *cports;
 	size_t i;
 	size_t size_in_bytes = sizeof(int) * len;
+
 	cports = k_malloc(size_in_bytes);
 	if (!cports) {
 		return NULL;
@@ -180,6 +183,7 @@ static int *cports_realloc(int *original_cports, size_t original_length, size_t 
 	}
 
 	int *cports = cports_alloc(new_length);
+
 	if (cports) {
 		memcpy(cports, original_cports, sizeof(int) * original_length);
 		k_free(original_cports);
@@ -275,6 +279,7 @@ static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, ui
 {
 	int ret;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
+
 	if (cport_id >= ctrl_data->cports_len) {
 		ret = -1;
 		goto free_msg;
@@ -298,7 +303,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr)
 	int ret;
 	struct node_control_data *ctrl_data;
 
-	ret = k_mem_slab_alloc(&node_control_data_slab, (void**)&ctrl_data, K_NO_WAIT);
+	ret = k_mem_slab_alloc(&node_control_data_slab, (void **)&ctrl_data, K_NO_WAIT);
 	if (ret) {
 		LOG_ERR("Failed to allocate Greybus connection");
 		goto early_exit;
@@ -321,7 +326,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr)
 	return inf;
 
 free_ctrl_data:
-  k_mem_slab_free(&node_control_data_slab, (void**)&ctrl_data);
+  k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 early_exit:
 	return NULL;
 }
@@ -333,7 +338,7 @@ void node_destroy_interface(struct gb_interface *inf)
 	}
 
 	sys_dlist_remove(&inf->node);
-  k_mem_slab_free(&node_control_data_slab, (void**)&inf->controller.ctrl_data);
+  k_mem_slab_free(&node_control_data_slab, (void **)&inf->controller.ctrl_data);
 	gb_interface_dealloc(inf);
 }
 

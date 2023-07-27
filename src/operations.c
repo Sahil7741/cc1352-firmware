@@ -39,8 +39,10 @@ static struct gb_connection *gb_connection_get(struct gb_interface *inf_ap,
 	struct gb_connection *conn;
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
-		// While the names are inf_peer and inf_ap, they are just arbitrary. So do
-		// comparisons in reverse as well
+		/*
+     * While the names are inf_peer and inf_ap, they are just arbitrary. So do
+		 * comparisons in reverse as well
+		 */
 		if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap &&
 		     conn->peer_cport_id == peer_cport && conn->ap_cport_id == ap_cport) ||
 		    (conn->inf_peer == inf_ap && conn->inf_ap == inf_peer &&
@@ -74,18 +76,20 @@ static struct gb_message *gb_message_alloc(const void *payload, size_t payload_l
 	return msg;
 }
 
-static uint16_t new_operation_id()
+static uint16_t new_operation_id(void)
 {
 	atomic_val_t temp = atomic_inc(&operation_id_counter);
+
 	if (temp == UINT16_MAX) {
 		atomic_set(&operation_id_counter, OPERATION_ID_START);
 	}
 	return temp;
 }
 
-static uint8_t new_interface_id()
+static uint8_t new_interface_id(void)
 {
 	atomic_val_t temp = atomic_inc(&interface_id_counter);
+
 	if (temp == UINT8_MAX) {
 		atomic_set(&interface_id_counter, INTERFACE_ID_START);
 	}
@@ -193,6 +197,7 @@ struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_
 					    uint8_t request_type, bool is_oneshot)
 {
 	uint16_t operation_id = is_oneshot ? 0 : new_operation_id();
+
 	return gb_message_alloc(payload, payload_len, request_type, operation_id, 0);
 }
 
@@ -212,6 +217,7 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
 {
 	int ret;
 	struct gb_interface *intf;
+
 	ret = k_mem_slab_alloc(&gb_interface_slab, (void **)&intf, K_NO_WAIT);
 	if (ret < 0) {
 		return NULL;

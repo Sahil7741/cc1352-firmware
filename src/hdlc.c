@@ -32,7 +32,7 @@ static void hdlc_rx_handler(struct k_work *);
 K_THREAD_STACK_DEFINE(hdlc_rx_worqueue_stack, HDLC_RX_WORKQUEUE_STACK_SIZE);
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-// TODO: Probably switch to a higher priority thread than apbridge
+/* TODO: Probably switch to a higher priority thread than apbridge */
 K_WORK_DEFINE(hdlc_rx_work, hdlc_rx_handler);
 RING_BUF_DECLARE(hdlc_rx_ringbuf, HDLC_RX_BUF_SIZE);
 
@@ -77,6 +77,7 @@ static void block_out(struct hdlc_driver *drv, const struct hdlc_block *block)
 	}
 
 	uint16_t crc_calc = crc ^ 0xffff;
+
 	uart_poll_out_crc(uart_dev, crc_calc, &crc);
 	uart_poll_out_crc(uart_dev, crc_calc >> 8, &crc);
 	uart_poll_out(uart_dev, HDLC_FRAME);
@@ -179,6 +180,7 @@ int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t addre
 {
 	size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
 	struct hdlc_block *block = k_malloc(block_size);
+
 	if (block == NULL) {
 		return -1;
 	}

@@ -25,6 +25,7 @@ static void hdlc_uart_backend_process(const struct log_backend *const backend,
 	ARG_UNUSED(backend);
 
 	uint32_t flags = log_backend_std_get_flags();
+
 	log_output_msg_process(&hdlc_uart_output, &msg->log, flags);
 }
 

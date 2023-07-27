@@ -26,12 +26,14 @@ static int ap_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint
 static struct gb_message *ap_inf_read(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	struct ap_controller_data *ctrl_data = ctrl->ctrl_data;
+
 	return k_fifo_get(&ctrl_data->pending_read[cport_id], K_NO_WAIT);
 }
 
 static int ap_inf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	struct ap_controller_data *ctrl_data = ctrl->ctrl_data;
+
 	if (cport_id < AP_MAX_NODES) {
 		k_fifo_init(&ctrl_data->pending_read[cport_id]);
 		return 0;
@@ -44,6 +46,7 @@ static void ap_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cport
 {
 	struct gb_message *msg;
 	struct ap_controller_data *ctrl_data = ctrl->ctrl_data;
+
 	if (cport_id >= AP_MAX_NODES) {
 		return;
 	}
@@ -66,7 +69,7 @@ static struct gb_interface intf = {.id = AP_INF_ID,
 					   .ctrl_data = &ap_ctrl_data,
 				   }};
 
-struct gb_interface *ap_init()
+struct gb_interface *ap_init(void)
 {
 	return &intf;
 }
@@ -74,12 +77,13 @@ struct gb_interface *ap_init()
 int ap_rx_submit(struct gb_message *msg)
 {
 	uint16_t cport_id;
+
 	memcpy(&cport_id, msg->header.pad, sizeof(uint16_t));
 	k_fifo_put(&ap_ctrl_data.pending_read[cport_id], msg);
 	return 0;
 }
 
-struct gb_interface *ap_interface()
+struct gb_interface *ap_interface(void)
 {
 	return &intf;
 }

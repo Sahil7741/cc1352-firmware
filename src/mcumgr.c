@@ -47,6 +47,7 @@ static uint16_t smp_hdlc_get_mtu(const struct net_buf *nb)
 int mcumgr_process_frame(const void *buffer, size_t buffer_len)
 {
 	struct net_buf *nb;
+
 	LOG_DBG("Got MCUmgr frame");
 
 	nb = mcumgr_serial_process_frag(&smp_rx_ctx, buffer, buffer_len);
@@ -59,9 +60,10 @@ int mcumgr_process_frame(const void *buffer, size_t buffer_len)
 	return 0;
 }
 
-int mcumgr_init()
+int mcumgr_init(void)
 {
 	int rc = smp_transport_init(&smp_transport);
+
 	if (rc) {
 		LOG_ERR("Failed to init SMP Transport");
 		return -1;

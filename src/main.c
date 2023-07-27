@@ -54,17 +54,17 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p3);
 
 	while (1) {
-		// Go through all connections
+		/* Go through all connections */
 		gb_connections_process_all(connection_callback);
 		k_yield();
-		// k_sleep(K_MSEC(50));
 	}
 }
 
-// This function probes for all greybus nodes.
-// Currently just using static IP for nodes.
-//
-// @return number of discovered nodes
+/* This function probes for all greybus nodes.
+ * Currently just using static IP for nodes.
+ *
+ * @return number of discovered nodes
+ */
 static int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len)
 {
 	if (node_array_len < 1) {
@@ -90,21 +90,21 @@ static void serial_callback(const struct device *dev, void *user_data)
 
 	ret = hdlc_rx_start(&buf);
 	if (ret == 0) {
-		// No space
+		/* No space */
 		LOG_ERR("No more space for HDLC receive");
 		return;
 	}
 
 	ret = uart_fifo_read(dev, buf, ret);
 	if (ret < 0) {
-		// Something went wrong
+		/* Something went wrong */
 		LOG_ERR("Failed to read UART");
 		return;
 	}
 
 	ret = hdlc_rx_finish(ret);
 	if (ret < 0) {
-		// Some error
+		/* Some error */
 		LOG_ERR("Filed to write data to hdlc buffer");
 		return;
 	}
@@ -190,7 +190,7 @@ void main(void)
 
 	svc_send_version();
 
-	// Wait until SVC is ready
+	/* Wait until SVC is ready */
 	while (!svc_is_ready()) {
 		k_sleep(K_MSEC(NODE_DISCOVERY_INTERVAL));
 	}
@@ -212,7 +212,7 @@ void main(void)
 			}
 		}
 
-		// Put the thread to sleep for an interval
+		/* Put the thread to sleep for an interval */
 		k_msleep(NODE_DISCOVERY_INTERVAL);
 	}
 }

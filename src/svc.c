@@ -2,6 +2,7 @@
  * Copyright (c) 2016 Alexandre Bailon
  *
  * SPDX-License-Identifier: Apache-2.0
+ *
  * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
 
@@ -48,12 +49,12 @@ static void svc_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cpor
 
 	struct gb_message *msg;
 
-	// Set svc to uninitialized
+	/* Set svc to uninitialized */
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
 
 	msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
 	while (msg) {
-		// Free all pending messages
+		/* Free all pending messages */
 		gb_message_dealloc(msg);
 		msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
 	}
@@ -167,6 +168,7 @@ struct gb_svc_intf_set_pwrm_response {
 static int control_send_request(void *payload, size_t payload_len, uint8_t request_type)
 {
 	struct gb_message *msg;
+
 	msg = gb_message_request_alloc(payload, payload_len, request_type, false);
 	if (msg == NULL) {
 		return -ENOMEM;
@@ -177,9 +179,10 @@ static int control_send_request(void *payload, size_t payload_len, uint8_t reque
 	return 0;
 }
 
-static int svc_send_hello()
+static int svc_send_hello(void)
 {
 	struct gb_svc_hello_request req = {.endo_id = ENDO_ID, .interface_id = AP_INF_ID};
+
 	return control_send_request(&req, sizeof(struct gb_svc_hello_request),
 				    GB_SVC_TYPE_HELLO_REQUEST);
 }
@@ -199,6 +202,7 @@ static void svc_response_helper(struct gb_message *msg, const void *payload, siz
 static void svc_version_response_handler(struct gb_message *msg)
 {
 	struct gb_svc_version_request *response = (struct gb_svc_version_request *)msg->payload;
+
 	LOG_DBG("SVC Protocol Version %u.%u", response->major, response->minor);
 	svc_send_hello();
 }
@@ -219,6 +223,7 @@ static void svc_empty_request_handler(struct gb_message *msg)
 static void svc_pwrm_get_rail_count_handler(struct gb_message *msg)
 {
 	struct gb_svc_pwrmon_rail_count_get_response req = {.rail_count = 0};
+
 	svc_response_helper(msg, &req, sizeof(struct gb_svc_pwrmon_rail_count_get_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -243,6 +248,7 @@ static void svc_intf_set_pwrm_handler(struct gb_message *msg)
 static void svc_intf_vsys_enable_disable_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_vsys_response resp = {.result_code = GB_SVC_INTF_VSYS_OK};
+
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_vsys_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -250,6 +256,7 @@ static void svc_intf_vsys_enable_disable_handler(struct gb_message *msg)
 static void svc_interface_refclk_enable_disable_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_refclk_response resp = {.result_code = GB_SVC_INTF_REFCLK_OK};
+
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_refclk_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -257,6 +264,7 @@ static void svc_interface_refclk_enable_disable_handler(struct gb_message *msg)
 static void svc_interface_unipro_enable_disable_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_unipro_response resp = {.result_code = GB_SVC_INTF_UNIPRO_OK};
+
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_unipro_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -272,6 +280,7 @@ static void svc_interface_activate_handler(struct gb_message *msg)
 static void svc_dme_peer_get_handler(struct gb_message *msg)
 {
 	struct gb_svc_dme_peer_get_response resp = {.result_code = 0, .attr_value = 0x0126};
+
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_get_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -279,6 +288,7 @@ static void svc_dme_peer_get_handler(struct gb_message *msg)
 static void svc_dme_peer_set_handler(struct gb_message *msg)
 {
 	struct gb_svc_dme_peer_set_response resp = {.result_code = 0};
+
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_dme_peer_set_response),
 			    GB_SVC_OP_SUCCESS);
 }
@@ -333,8 +343,7 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 
 	ret = gb_destroy_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (ret < 0) {
-		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
-			"and Cport 2: %u of Interface 2: %u",
+		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u and Cport 2: %u of Interface 2: %u",
 			ret, req->cport1_id, req->intf1_id, req->cport2_id, req->intf2_id);
 		goto fail;
 	}
@@ -349,6 +358,7 @@ fail:
 static void svc_interface_resume_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_resume_response resp = {.status = GB_SVC_INTF_TYPE_GREYBUS};
+
 	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response), GB_OP_SUCCESS);
 }
 
@@ -357,7 +367,7 @@ static void svc_module_inserted_response_handler(struct gb_message *msg)
 	if (gb_message_is_success(msg)) {
 		LOG_DBG("Successful Module Inserted Response");
 	} else {
-		// TODO: Add functionality to remove the interface in case of error
+		/* TODO: Add functionality to remove the interface in case of error */
 		LOG_DBG("Module Inserted Event failed");
 	}
 }
@@ -456,7 +466,7 @@ int svc_send_module_inserted(uint8_t primary_intf_id)
 				    GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
 }
 
-int svc_send_version()
+int svc_send_version(void)
 {
 	struct gb_svc_version_request req = {.major = GB_SVC_VERSION_MAJOR,
 					     .minor = GB_SVC_VERSION_MINOR};
@@ -464,19 +474,19 @@ int svc_send_version()
 				    GB_SVC_TYPE_PROTOCOL_VERSION_REQUEST);
 }
 
-struct gb_interface *svc_init()
+struct gb_interface *svc_init(void)
 {
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
 	k_fifo_init(&svc_ctrl_data.pending_read);
 	return &intf;
 }
 
-bool svc_is_ready()
+bool svc_is_ready(void)
 {
 	return atomic_test_bit(svc_is_read_flag, 0);
 }
 
-struct gb_interface *svc_interface()
+struct gb_interface *svc_interface(void)
 {
 	if (svc_is_ready()) {
 		return &intf;
