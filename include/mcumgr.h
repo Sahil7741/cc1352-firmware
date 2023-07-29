@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _MCUMGR_H_
@@ -11,16 +10,16 @@
 #include <zephyr/toolchain.h>
 
 #ifdef CONFIG_BEAGLEPLAY_GREYBUS_MCUMGR
-int mcumgr_init();
+int mcumgr_init(void);
 #else
-static int mcumgr_init()
+static int mcumgr_init(void)
 {
 	return 0;
 }
 #endif
 
 #ifdef CONFIG_BEAGLEPLAY_GREYBUS_MCUMGR
-int mcumgr_process_frame(const void *, size_t);
+int mcumgr_process_frame(const void *buffer, size_t buffer_len);
 #else
 static int mcumgr_process_frame(const void *buffer, size_t buffer_len)
 {

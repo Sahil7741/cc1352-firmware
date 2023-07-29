@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _SVC_H_
@@ -15,20 +14,20 @@
  * Initialize SVC Interface. Should be called before sending any greybus
  * request.
  */
-struct gb_interface *svc_init();
+struct gb_interface *svc_init(void);
 
 /*
  * Check if SVC is ready. This mostly means if SVC Hello was successfuly
  * executed.
  */
-bool svc_is_ready();
+bool svc_is_ready(void);
 
 /*
  * Create SVC_TYPE_VERSION greybus message and queue it for sending.
  *
  * @return 0 if successful, else error.
  */
-int svc_send_version();
+int svc_send_version(void);
 
 /*
  * Send the SVC module inserted event.
@@ -37,13 +36,13 @@ int svc_send_version();
  *
  * @return 0 if successfuly, negative in case of error
  */
-int svc_send_module_inserted(uint8_t);
+int svc_send_module_inserted(uint8_t intf_id);
 
 /*
  * Get the SVC interface
  *
  * @return pointer to svc interface
  */
-struct gb_interface *svc_interface();
+struct gb_interface *svc_interface(void);
 
 #endif

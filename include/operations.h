@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _OPERATIONS_H_
@@ -176,7 +175,7 @@ static inline bool gb_message_is_success(const struct gb_message *msg)
  *
  * TODO: Move to hdlc
  */
-int gb_message_hdlc_send(const struct gb_message *);
+int gb_message_hdlc_send(const struct gb_message *msg);
 
 /*
  * Create a greybus connection between two interfaces
@@ -188,8 +187,8 @@ int gb_message_hdlc_send(const struct gb_message *);
  *
  * @return greybus connection allocated on heap. Null in case of errro
  */
-struct gb_connection *gb_create_connection(struct gb_interface *, struct gb_interface *, uint16_t,
-					   uint16_t);
+struct gb_connection *gb_create_connection(struct gb_interface *intf1, struct gb_interface *intf2,
+					   uint16_t intf1_cport_id, uint16_t intf2_cport_id);
 
 /*
  * Destroy greybus connection
@@ -201,7 +200,8 @@ struct gb_connection *gb_create_connection(struct gb_interface *, struct gb_inte
  *
  * @return 0 on success. Negative in case of error
  */
-int gb_destroy_connection(struct gb_interface *, struct gb_interface *, uint16_t, uint16_t);
+int gb_destroy_connection(struct gb_interface *intf1, struct gb_interface *intf2,
+			  uint16_t intf1_cport_id, uint16_t intf2_cport_id);
 
 /*
  * Allocate a greybus request message
@@ -213,26 +213,30 @@ int gb_destroy_connection(struct gb_interface *, struct gb_interface *, uint16_t
  *
  * @return greybus message allocated on heap. Null in case of errro
  */
-struct gb_message *gb_message_request_alloc(const void *, size_t, uint8_t, bool);
+struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,
+					    uint8_t request_type, bool is_oneshot);
 
 /*
  * Allocate a greybus response message
  *
  * @param Payload
  * @param Payload len
- * @param Request Type
+ * @param Response Type
  * @param Operation ID
+ * @param Status
  *
  * @return greybus message allocated on heap. Null in case of errro
  */
-struct gb_message *gb_message_response_alloc(const void *, size_t, uint8_t, uint16_t, uint8_t);
+struct gb_message *gb_message_response_alloc(const void *payload, size_t payload_len,
+					     uint8_t response_type, uint16_t operation_id,
+					     uint8_t status);
 
 /*
  * Deallocate a greybus message.
  *
  * @param pointer to the message to deallcate
  */
-void gb_message_dealloc(struct gb_message *);
+void gb_message_dealloc(struct gb_message *msg);
 
 /*
  * Allocate a greybus interface
@@ -241,20 +245,22 @@ void gb_message_dealloc(struct gb_message *);
  * @param write callback
  * @param create connection callback
  * @param destroy connection callback
+ * @param controller data
  *
  * @return allocated greybus interface. NULL in case of error
  */
-struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t,
-					gb_controller_write_callback_t,
-					gb_controller_create_connection_t,
-					gb_controller_destroy_connection_t, void *);
+struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
+					gb_controller_write_callback_t write_cb,
+					gb_controller_create_connection_t create_connection_cb,
+					gb_controller_destroy_connection_t destroy_connection_cb,
+					void *ctrl_data);
 
 /*
  * Deallocate a greybus interface
  *
  * @param greybus interface
  */
-void gb_interface_dealloc(struct gb_interface *);
+void gb_interface_dealloc(struct gb_interface *intf);
 
 /*
  * Get interface associated with interface id.
@@ -263,13 +269,13 @@ void gb_interface_dealloc(struct gb_interface *);
  *
  * @param greybus interface
  */
-struct gb_interface *find_interface_by_id(uint8_t);
+struct gb_interface *find_interface_by_id(uint8_t intf_id);
 
 /*
  * Execute a function on all active connections
  *
  * @param input function to run on the connection
  */
-void gb_connections_process_all(gb_connection_callback);
+void gb_connections_process_all(gb_connection_callback cb);
 
 #endif

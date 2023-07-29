@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _NODE_H_
@@ -16,14 +15,14 @@
  *
  * @param address to search for
  */
-struct gb_interface *node_find_by_addr(struct in6_addr *);
+struct gb_interface *node_find_by_addr(struct in6_addr *addr);
 
 /*
  * Destroy a tcp greybus inteface
  *
  * @return greybus interface
  */
-void node_destroy_interface(struct gb_interface *);
+void node_destroy_interface(struct gb_interface *intf);
 
 /*
  * Create a new tcp greybus node interface
@@ -32,7 +31,7 @@ void node_destroy_interface(struct gb_interface *);
  *
  * @return allocated greybus interface
  */
-struct gb_interface *node_create_interface(struct in6_addr *);
+struct gb_interface *node_create_interface(struct in6_addr *addr);
 
 /*
  * Find greybus node by interface ID
@@ -41,6 +40,6 @@ struct gb_interface *node_create_interface(struct in6_addr *);
  *
  * @return greybus interface
  */
-struct gb_interface *node_find_by_id(uint8_t);
+struct gb_interface *node_find_by_id(uint8_t intf_id);
 
 #endif
