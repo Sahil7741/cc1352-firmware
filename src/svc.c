@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2016 Alexandre Bailon
- *
- * SPDX-License-Identifier: Apache-2.0
  *
  * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */

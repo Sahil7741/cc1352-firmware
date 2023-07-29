@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "hdlc.h"

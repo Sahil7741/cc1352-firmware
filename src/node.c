@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "node.h"
@@ -326,7 +325,7 @@ struct gb_interface *node_create_interface(struct in6_addr *addr)
 	return inf;
 
 free_ctrl_data:
-  k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
+	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 early_exit:
 	return NULL;
 }
@@ -338,7 +337,7 @@ void node_destroy_interface(struct gb_interface *inf)
 	}
 
 	sys_dlist_remove(&inf->node);
-  k_mem_slab_free(&node_control_data_slab, (void **)&inf->controller.ctrl_data);
+	k_mem_slab_free(&node_control_data_slab, (void **)&inf->controller.ctrl_data);
 	gb_interface_dealloc(inf);
 }
 

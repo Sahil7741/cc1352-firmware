@@ -1,8 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2016-2019 Intel Corporation
  * Copyright (c) 2020 Statropy Software LLC
  *
- * SPDX-License-Identifier: Apache-2.0
  * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
 

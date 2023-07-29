@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
- *
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "operations.h"
@@ -40,7 +39,7 @@ static struct gb_connection *gb_connection_get(struct gb_interface *inf_ap,
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
 		/*
-     * While the names are inf_peer and inf_ap, they are just arbitrary. So do
+		 * While the names are inf_peer and inf_ap, they are just arbitrary. So do
 		 * comparisons in reverse as well
 		 */
 		if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap &&
