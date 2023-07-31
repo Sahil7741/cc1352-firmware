@@ -4,6 +4,7 @@
  */
 
 #include "ap.h"
+#include "mdns.h"
 #include "hdlc.h"
 #include "mcumgr.h"
 #include "node.h"
@@ -57,23 +58,6 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 		gb_connections_process_all(connection_callback);
 		k_yield();
 	}
-}
-
-/* This function probes for all greybus nodes.
- * Currently just using static IP for nodes.
- *
- * @return number of discovered nodes
- */
-static int get_all_nodes(struct in6_addr *node_array, const size_t node_array_len)
-{
-	if (node_array_len < 1) {
-		return -1;
-	}
-
-	memset(&node_array[0], 0, sizeof(struct in6_addr));
-	inet_pton(AF_INET6, CONFIG_NET_CONFIG_PEER_IPV6_ADDR, &node_array[0]);
-
-	return 1;
 }
 
 static void serial_callback(const struct device *dev, void *user_data)
@@ -153,10 +137,11 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 
 void main(void)
 {
-	int ret;
+	int ret, sock;
 	struct gb_connection *conn;
 	struct in6_addr node_array[MAX_GREYBUS_NODES];
-	struct gb_interface *intf;
+	struct gb_interface *intf, *ap, *svc;
+  char query[] = "_greybus._tcp.local\0";
 
 	LOG_INF("Starting BeaglePlay Greybus");
 
@@ -168,8 +153,8 @@ void main(void)
 	mcumgr_init();
 
 	hdlc_init(hdlc_process_complete_frame);
-	struct gb_interface *ap = ap_init();
-	struct gb_interface *svc = svc_init();
+	ap = ap_init();
+	svc = svc_init();
 
 	conn = gb_create_connection(ap, svc, 0, 0);
 
@@ -194,9 +179,17 @@ void main(void)
 		k_sleep(K_MSEC(NODE_DISCOVERY_INTERVAL));
 	}
 
+	sock = mdns_socket_open_ipv6(&mdns_addr, 2000);
+
 	while (1) {
 		LOG_DBG("Try Node Discovery");
-		ret = get_all_nodes(node_array, MAX_GREYBUS_NODES);
+		ret = mdns_query_send(sock, query, strlen(query));
+		if (ret < 0) {
+			LOG_WRN("Failed to get greybus nodes");
+			continue;
+		}
+
+		ret = mdns_query_recv(sock, node_array, MAX_GREYBUS_NODES, query, strlen(query));
 		if (ret < 0) {
 			LOG_WRN("Failed to get greybus nodes");
 			continue;
