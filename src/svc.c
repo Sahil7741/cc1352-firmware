@@ -10,17 +10,30 @@
 #include "greybus_protocol.h"
 #include "node.h"
 #include "operations.h"
+#include <zephyr/sys/dlist.h>
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/atomic.h>
 
-#define ENDO_ID 0x4755
+#define ENDO_ID           0x4755
+#define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 ATOMIC_DEFINE(svc_is_read_flag, 1);
+
+static sys_dlist_t operations_list = SYS_DLIST_STATIC_INIT(&operations_list);
+
+struct svc_module_removed_map_item {
+	uint16_t opr_id;
+	uint8_t intf_id;
+	sys_dnode_t node;
+};
+
+K_MEM_SLAB_DEFINE_STATIC(svc_module_removed_map, sizeof(struct svc_module_removed_map_item),
+			 MAX_GREYBUS_NODES, 4);
 
 struct svc_control_data {
 	struct k_fifo pending_read;
@@ -179,7 +192,7 @@ static int control_send_request(void *payload, size_t payload_len, uint8_t reque
 
 	k_fifo_put(&svc_ctrl_data.pending_read, msg);
 
-	return 0;
+	return msg->header.id;
 }
 
 static int svc_send_hello(void)
@@ -376,6 +389,26 @@ static void svc_module_inserted_response_handler(struct gb_message *msg)
 	}
 }
 
+static void svc_module_removed_response_handler(struct gb_message *msg) {
+	struct svc_module_removed_map_item *item, *item_safe;
+	struct gb_interface *intf;
+
+	if (gb_message_is_success(msg)) {
+		SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&operations_list, item, item_safe, node) {
+			if (msg->header.id == item->opr_id) {
+				sys_dlist_remove(&item->node);
+				intf = find_interface_by_id(item->intf_id);
+				if (!intf) {
+					LOG_ERR("Failed to find the removed interface");
+				}
+
+				gb_interface_destroy(intf);
+				k_mem_slab_free(&svc_module_removed_map, (void**)&item);
+			}
+		}
+	}
+}
+
 static void gb_handle_msg(struct gb_message *msg)
 {
 	LOG_DBG("Process SVC Operation %u of type %X", msg->header.id, msg->header.type);
@@ -433,6 +466,7 @@ static void gb_handle_msg(struct gb_message *msg)
 		svc_module_inserted_response_handler(msg);
 		break;
 	case GB_SVC_TYPE_MODULE_REMOVED_RESPONSE:
+		svc_module_removed_response_handler(msg);
 		break;
 	default:
 		LOG_WRN("Handling SVC operation Type %X not supported yet", msg->header.type);
@@ -474,8 +508,21 @@ int svc_send_module_inserted(uint8_t primary_intf_id)
 
 int svc_send_module_removed(uint8_t intf_id)
 {
+	int ret;
+	struct svc_module_removed_map_item *item;
+
 	struct gb_svc_module_removed_request req = {.primary_intf_id = intf_id};
-	return control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED_REQUEST);
+	ret = control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED_REQUEST);
+	if (ret < 0) {
+		return ret;
+	}
+
+	k_mem_slab_alloc(&svc_module_removed_map, (void **)&item, K_NO_WAIT);
+	item->intf_id = intf_id;
+	item->opr_id = ret;
+	sys_dlist_append(&operations_list, &item->node);
+
+	return ret;
 }
 
 int svc_send_version(void)

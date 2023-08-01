@@ -31,28 +31,6 @@ static atomic_t operation_id_counter = ATOMIC_INIT(OPERATION_ID_START);
 static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
 static sys_dlist_t gb_connections_list = SYS_DLIST_STATIC_INIT(&gb_connections_list);
 
-static struct gb_connection *gb_connection_get(struct gb_interface *inf_ap,
-					       struct gb_interface *inf_peer, uint16_t ap_cport,
-					       uint16_t peer_cport)
-{
-	struct gb_connection *conn;
-
-	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
-		/*
-		 * While the names are inf_peer and inf_ap, they are just arbitrary. So do
-		 * comparisons in reverse as well
-		 */
-		if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap &&
-		     conn->peer_cport_id == peer_cport && conn->ap_cport_id == ap_cport) ||
-		    (conn->inf_peer == inf_ap && conn->inf_ap == inf_peer &&
-		     conn->peer_cport_id == ap_cport && conn->ap_cport_id == peer_cport)) {
-			return conn;
-		}
-	}
-
-	return NULL;
-}
-
 static struct gb_message *gb_message_alloc(const void *payload, size_t payload_len,
 					   uint8_t message_type, uint16_t operation_id,
 					   uint8_t status)
@@ -172,23 +150,45 @@ static void gb_flush_connection(struct gb_connection *conn)
 	} while (flag);
 }
 
+static void gb_connection_dealloc(struct gb_connection *conn)
+{
+	sys_dlist_remove(&conn->node);
+	k_mem_slab_free(&gb_connection_slab, (void **)&conn);
+}
+
 int gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_peer,
 			  uint16_t ap_cport, uint16_t peer_cport)
 {
-	struct gb_connection *conn = gb_connection_get(inf_ap, inf_peer, ap_cport, peer_cport);
+	struct gb_connection *conn;
 
-	if (!conn) {
-		return -1;
+	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
+		/*
+		 * While the names are inf_peer and inf_ap, they are just arbitrary. So do
+		 * comparisons in reverse as well
+		 */
+		if ((conn->inf_peer == inf_peer && conn->inf_ap == inf_ap &&
+		     conn->peer_cport_id == peer_cport && conn->ap_cport_id == ap_cport)) {
+			gb_flush_connection(conn);
+			conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller,
+								    ap_cport);
+			conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller,
+								      peer_cport);
+			goto cleanup;
+		} else if ((conn->inf_peer == inf_ap && conn->inf_ap == inf_peer &&
+			    conn->peer_cport_id == ap_cport && conn->ap_cport_id == peer_cport)) {
+			gb_flush_connection(conn);
+			conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller,
+								    peer_cport);
+			conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller,
+								      ap_cport);
+			goto cleanup;
+		}
 	}
 
-	sys_dlist_remove(&conn->node);
+	return -1;
 
-	gb_flush_connection(conn);
-
-	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, ap_cport);
-	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller, peer_cport);
-
-	k_mem_slab_free(&gb_connection_slab, (void **)&conn);
+cleanup:
+	gb_connection_dealloc(conn);
 	return 0;
 }
 
@@ -257,4 +257,27 @@ void gb_connections_process_all(gb_connection_callback cb)
 	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
 		cb(conn);
 	}
+}
+
+static void gb_connection_destroy(struct gb_connection *conn)
+{
+	gb_flush_connection(conn);
+	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, conn->ap_cport_id);
+	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller,
+						      conn->peer_cport_id);
+	gb_connection_dealloc(conn);
+}
+
+void gb_interface_destroy(struct gb_interface *intf)
+{
+	struct gb_connection *conn, *conn_safe;
+
+	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&gb_connections_list, conn, conn_safe, node) {
+		if (conn->inf_ap == intf || conn->inf_peer == intf) {
+			gb_connection_destroy(conn);
+		}
+	}
+
+	// TODO: Maybe move this function to controller
+	node_destroy_interface(intf);
 }

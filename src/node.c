@@ -6,6 +6,7 @@
 #include "node.h"
 #include "greybus_protocol.h"
 #include "operations.h"
+#include "svc.h"
 #include "zephyr/sys/dlist.h"
 #include <errno.h>
 #include <zephyr/logging/log.h>
@@ -244,6 +245,7 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	bool flag = false;
 	struct gb_message *msg = NULL;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
+	struct gb_interface *intf = CONTAINER_OF(ctrl, struct gb_interface, controller);
 
 	if (cport_id >= ctrl_data->cports_len) {
 		LOG_ERR("Cport ID greater than Cports Length");
@@ -265,8 +267,20 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 
 	if (fd[0].revents & ZSOCK_POLLIN) {
 		msg = gb_message_receive(fd[0].fd, &flag);
+
 		if (flag) {
 			LOG_ERR("Socket of Cport %u closed by Peer Node", cport_id);
+			if (cport_id == 0) {
+				// Remove Module
+				svc_send_module_removed(intf->id);
+			} else {
+				// Retry
+				ctrl->destroy_connection(ctrl, cport_id);
+				ret = ctrl->create_connection(ctrl, cport_id);
+				if (ret < 0) {
+					svc_send_module_removed(intf->id);
+				}
+			}
 		}
 	}
 

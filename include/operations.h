@@ -278,4 +278,7 @@ struct gb_interface *find_interface_by_id(uint8_t intf_id);
  */
 void gb_connections_process_all(gb_connection_callback cb);
 
+
+void gb_interface_destroy(struct gb_interface *intf);
+
 #endif
