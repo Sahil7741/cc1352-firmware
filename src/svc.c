@@ -118,6 +118,10 @@ struct gb_svc_module_inserted_request {
 	uint16_t flags;
 } __packed;
 
+struct gb_svc_module_removed_request {
+	uint8_t primary_intf_id;
+} __packed;
+
 struct gb_svc_version_request {
 	uint8_t major;
 	uint8_t minor;
@@ -342,7 +346,8 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 
 	ret = gb_destroy_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (ret < 0) {
-		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u and Cport 2: %u of Interface 2: %u",
+		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
+			"and Cport 2: %u of Interface 2: %u",
 			ret, req->cport1_id, req->intf1_id, req->cport2_id, req->intf2_id);
 		goto fail;
 	}
@@ -427,6 +432,8 @@ static void gb_handle_msg(struct gb_message *msg)
 	case GB_SVC_TYPE_MODULE_INSERTED_RESPONSE:
 		svc_module_inserted_response_handler(msg);
 		break;
+	case GB_SVC_TYPE_MODULE_REMOVED_RESPONSE:
+		break;
 	default:
 		LOG_WRN("Handling SVC operation Type %X not supported yet", msg->header.type);
 	}
@@ -463,6 +470,12 @@ int svc_send_module_inserted(uint8_t primary_intf_id)
 		.primary_intf_id = primary_intf_id, .intf_count = 1, .flags = 0};
 	return control_send_request(&req, sizeof(struct gb_svc_module_inserted_request),
 				    GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
+}
+
+int svc_send_module_removed(uint8_t intf_id)
+{
+	struct gb_svc_module_removed_request req = {.primary_intf_id = intf_id};
+	return control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED_REQUEST);
 }
 
 int svc_send_version(void)

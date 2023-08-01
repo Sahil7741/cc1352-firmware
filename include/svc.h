@@ -38,6 +38,9 @@ int svc_send_version(void);
  */
 int svc_send_module_inserted(uint8_t intf_id);
 
+
+int svc_send_module_removed(uint8_t intf_id);
+
 /*
  * Get the SVC interface
  *
