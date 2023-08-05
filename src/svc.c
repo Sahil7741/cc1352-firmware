@@ -374,9 +374,9 @@ fail:
 
 static void svc_interface_resume_handler(struct gb_message *msg)
 {
-	struct gb_svc_intf_resume_response resp = {.status = GB_SVC_INTF_TYPE_GREYBUS};
+	struct gb_svc_intf_resume_response resp = {.status = GB_SVC_OP_SUCCESS};
 
-	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response), GB_OP_SUCCESS);
+	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response), GB_SVC_OP_SUCCESS);
 }
 
 static void svc_module_inserted_response_handler(struct gb_message *msg)
@@ -389,7 +389,8 @@ static void svc_module_inserted_response_handler(struct gb_message *msg)
 	}
 }
 
-static void svc_module_removed_response_handler(struct gb_message *msg) {
+static void svc_module_removed_response_handler(struct gb_message *msg)
+{
 	struct svc_module_removed_map_item *item, *item_safe;
 	struct gb_interface *intf;
 
@@ -403,7 +404,7 @@ static void svc_module_removed_response_handler(struct gb_message *msg) {
 				}
 
 				gb_interface_destroy(intf);
-				k_mem_slab_free(&svc_module_removed_map, (void**)&item);
+				k_mem_slab_free(&svc_module_removed_map, (void **)&item);
 			}
 		}
 	}
