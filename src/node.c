@@ -207,7 +207,7 @@ static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cpor
 	if (!ctrl_data->cports) {
 		return -ENOMEM;
 	}
-	ctrl_data->cports_len = cport_id + 1;
+	ctrl_data->cports_len = MAX(cport_id + 1, ctrl_data->cports_len);
 
 	if (ctrl_data->cports[cport_id] != -1) {
 		LOG_ERR("Cannot create multiple connections to a cport");
@@ -245,7 +245,6 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	bool flag = false;
 	struct gb_message *msg = NULL;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-	struct gb_interface *intf = CONTAINER_OF(ctrl, struct gb_interface, controller);
 
 	if (cport_id >= ctrl_data->cports_len) {
 		LOG_ERR("Cport ID greater than Cports Length");
@@ -270,17 +269,7 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 
 		if (flag) {
 			LOG_ERR("Socket of Cport %u closed by Peer Node", cport_id);
-			if (cport_id == 0) {
-				// Remove Module
-				svc_send_module_removed(intf->id);
-			} else {
-				// Retry
-				ctrl->destroy_connection(ctrl, cport_id);
-				ret = ctrl->create_connection(ctrl, cport_id);
-				if (ret < 0) {
-					svc_send_module_removed(intf->id);
-				}
-			}
+			ctrl->destroy_connection(ctrl, cport_id);
 		}
 	}
 
