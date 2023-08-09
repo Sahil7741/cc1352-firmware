@@ -156,9 +156,6 @@ mdns_get_next_substring(const void *rawdata, size_t size, size_t offset) {
 static int mdns_socket_setup_ipv6(int sock, const struct in6_addr *jaddr,
                                   int timeout_msec) {
   unsigned int reuseaddr = 1;
-  struct timeval tv;
-
-  tv.tv_usec = timeout_msec * 1000;
 
   if (!join_multicast_group(jaddr)) {
     LOG_ERR("Failed to join multicast group");
@@ -169,7 +166,6 @@ static int mdns_socket_setup_ipv6(int sock, const struct in6_addr *jaddr,
                    sizeof(reuseaddr));
   zsock_setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (const char *)&reuseaddr,
                    sizeof(reuseaddr));
-  zsock_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
   struct sockaddr_in6 sock_addr;
   memset(&sock_addr, 0, sizeof(struct sockaddr_in6));
@@ -180,9 +176,6 @@ static int mdns_socket_setup_ipv6(int sock, const struct in6_addr *jaddr,
   if (zsock_bind(sock, (struct sockaddr *)&sock_addr,
                  sizeof(struct sockaddr_in6)))
     return -1;
-
-  const int flags = zsock_fcntl(sock, F_GETFL, 0);
-  zsock_fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
   return 0;
 }
@@ -479,7 +472,6 @@ static bool mdns_answer_check(const void *buffer, size_t size, size_t *offset,
   size_t parsed = 0, i, record_length, record_offset;
   uint16_t length;
   char namebuffer[MDNS_PTR_NAME_SIZE];
-  // char expected[] = "zephyr._greybus._tcp.local\0";
   char expected[] = "zephyr.\0";
 
   for (i = 0; i < records; ++i) {
@@ -573,12 +565,23 @@ early_exit:
 size_t mdns_query_recv(int sock, struct in6_addr *addr_list,
                        size_t addr_list_len, const char *query,
                        size_t query_len) {
-  size_t ret, total = 0;
 
-  do {
+	int ret;
+  size_t total = 0;
+	struct zsock_pollfd fds[1];
+
+	fds[0].fd = sock;
+	fds[0].events = ZSOCK_POLLIN;
+	ret = zsock_poll(fds, 1, 2000);
+
+  while(ret > 0) {
     ret = mdns_query_recv_internal(sock, &addr_list[total], query, query_len);
     total += ret;
-  } while (ret && total < addr_list_len);
+
+		fds[0].fd = sock;
+		fds[0].events = ZSOCK_POLLIN;
+		ret = zsock_poll(fds, 1, 0);
+  }
 
   return total;
 }
