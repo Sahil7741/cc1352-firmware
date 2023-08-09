@@ -405,6 +405,7 @@ static void svc_module_removed_response_handler(struct gb_message *msg)
 
 				gb_interface_destroy(intf);
 				k_mem_slab_free(&svc_module_removed_map, (void **)&item);
+				break;
 			}
 		}
 	}

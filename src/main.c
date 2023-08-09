@@ -141,8 +141,8 @@ void main(void)
 	int ret, sock;
 	struct gb_connection *conn;
 	struct in6_addr node_array[MAX_GREYBUS_NODES];
-	struct gb_interface *intf, *ap, *svc;
-  char query[] = "_greybus._tcp.local\0";
+	struct gb_interface *ap, *svc;
+	char query[] = "_greybus._tcp.local\0";
 
 	LOG_INF("Starting BeaglePlay Greybus");
 
@@ -183,7 +183,8 @@ void main(void)
 	sock = mdns_socket_open_ipv6(&mdns_addr, 2000);
 
 	while (1) {
-		LOG_DBG("Try Node Discovery");
+		k_msleep(NODE_DISCOVERY_INTERVAL);
+
 		ret = mdns_query_send(sock, query, strlen(query));
 		if (ret < 0) {
 			LOG_WRN("Failed to get greybus nodes");
@@ -196,16 +197,6 @@ void main(void)
 			continue;
 		}
 
-		for (size_t i = 0; i < ret; ++i) {
-			intf = node_find_by_addr(&node_array[i]);
-			if (!intf) {
-				LOG_DBG("Found new node");
-				intf = node_create_interface(&node_array[i]);
-				svc_send_module_inserted(intf->id);
-			}
-		}
-
-		/* Put the thread to sleep for an interval */
-		k_msleep(NODE_DISCOVERY_INTERVAL);
+		node_filter(node_array, ret);
 	}
 }

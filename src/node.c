@@ -7,6 +7,7 @@
 #include "greybus_protocol.h"
 #include "operations.h"
 #include "svc.h"
+#include <zephyr/net/net_ip.h>
 #include "zephyr/sys/dlist.h"
 #include <errno.h>
 #include <zephyr/logging/log.h>
@@ -364,10 +365,57 @@ struct gb_interface *node_find_by_addr(struct in6_addr *addr)
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&node_interface_list, inf, node) {
 		ctrl_data = inf->controller.ctrl_data;
-		if (memcmp(&ctrl_data->addr, addr, sizeof(struct in6_addr)) == 0) {
+		if (net_ipv6_addr_cmp(&ctrl_data->addr, addr)) {
 			return inf;
 		}
 	}
 
 	return NULL;
+}
+
+struct active_node {
+	struct in6_addr addr;
+	uint8_t intf_id;
+};
+
+void node_filter(struct in6_addr *active_addr, size_t active_len)
+{
+	struct active_node inactive_nodes[MAX_GREYBUS_NODES];
+	size_t pos = 0, i, j;
+	struct gb_interface *inf;
+	struct node_control_data *ctrl_data;
+	bool flag;
+
+	SYS_DLIST_FOR_EACH_CONTAINER(&node_interface_list, inf, node) {
+		ctrl_data = inf->controller.ctrl_data;
+		net_ipaddr_copy(&inactive_nodes[pos].addr, &ctrl_data->addr);
+		inactive_nodes[pos].intf_id = inf->id;
+		pos++;
+	}
+
+	for (i = 0; i < active_len; ++i) {
+		flag = false;
+
+		for (j = 0; j < pos; ++j) {
+			if (net_ipv6_addr_cmp(&inactive_nodes[j].addr, &active_addr[i])) {
+				if (j != pos) {
+					memcpy(&inactive_nodes[j], &inactive_nodes[pos],
+					       sizeof(struct active_node));
+				}
+				pos--;
+				flag = true;
+			}
+		}
+
+		// Handle New Node
+		if (!flag) {
+			inf = node_create_interface(&active_addr[i]);
+			svc_send_module_inserted(inf->id);
+		}
+	}
+
+	// Handle Removed Modules
+	for (i = 0; i < pos; ++i) {
+		svc_send_module_removed(inactive_nodes[i].intf_id);
+	}
 }
