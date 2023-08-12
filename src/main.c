@@ -24,6 +24,8 @@
 #define UART_DEVICE_NODE        DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
 #define MAX_GREYBUS_NODES       CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define CONTROL_SVC_START       0x01
+#define CONTROL_SVC_STOP        0x02
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -56,8 +58,12 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 	while (1) {
 		/* Go through all connections */
 		gb_connections_process_all(connection_callback);
-		k_yield();
-		// k_sleep(K_MSEC(100));
+		// k_yield();
+		if (svc_is_ready()) {
+			k_yield();
+		} else {
+			k_sleep(K_MSEC(5000));
+		}
 	}
 }
 
@@ -121,6 +127,39 @@ static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 	return 0;
 }
 
+static int control_process_frame(const char *buffer, size_t buffer_len)
+{
+	uint8_t command;
+	struct gb_connection *conn;
+	struct gb_interface *ap, *svc;
+
+	if (buffer_len != 1) {
+		LOG_ERR("Invalid Buffer");
+		return -1;
+	}
+
+	command = buffer[0];
+
+	switch (command) {
+	case CONTROL_SVC_START:
+		LOG_INF("Starting SVC");
+		ap = ap_init();
+		svc = svc_init();
+		conn = gb_create_connection(ap, svc, 0, 0);
+		svc_send_version();
+		return 0;
+	case CONTROL_SVC_STOP:
+		LOG_INF("Stopping SVC");
+		gb_connection_destroy_all();
+		node_destroy_all();
+		svc_deinit();
+		ap_deinit();
+		return 0;
+	}
+
+	return -1;
+}
+
 static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t address)
 {
 	switch (address) {
@@ -128,6 +167,8 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 		return hdlc_process_greybus_frame(buffer, len);
 	case ADDRESS_MCUMGR:
 		return mcumgr_process_frame(buffer, len);
+	case ADDRESS_CONTROL:
+		return control_process_frame(buffer, len);
 	case ADDRESS_DBG:
 		LOG_WRN("Ignore DBG Frame");
 		return 0;
@@ -139,9 +180,7 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 void main(void)
 {
 	int ret, sock;
-	struct gb_connection *conn;
 	struct in6_addr node_array[MAX_GREYBUS_NODES];
-	struct gb_interface *ap, *svc;
 	char query[] = "_greybus._tcp.local\0";
 
 	LOG_INF("Starting BeaglePlay Greybus");
@@ -152,12 +191,7 @@ void main(void)
 	}
 
 	mcumgr_init();
-
 	hdlc_init(hdlc_process_complete_frame);
-	ap = ap_init();
-	svc = svc_init();
-
-	conn = gb_create_connection(ap, svc, 0, 0);
 
 	ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
 	if (ret < 0) {
@@ -173,17 +207,15 @@ void main(void)
 
 	uart_irq_rx_enable(uart_dev);
 
-	svc_send_version();
-
-	/* Wait until SVC is ready */
-	while (!svc_is_ready()) {
-		k_sleep(K_MSEC(NODE_DISCOVERY_INTERVAL));
-	}
-
 	sock = mdns_socket_open_ipv6(&mdns_addr, 2000);
 
 	while (1) {
 		k_msleep(NODE_DISCOVERY_INTERVAL);
+
+		if (!svc_is_ready()) {
+			LOG_WRN("SVC Not Ready");
+			continue;
+		}
 
 		ret = mdns_query_send(sock, query, strlen(query));
 		if (ret < 0) {

@@ -15,6 +15,7 @@
 #define ADDRESS_GREYBUS 0x01
 #define ADDRESS_DBG     0x02
 #define ADDRESS_MCUMGR  0x03
+#define ADDRESS_CONTROL 0x04
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);

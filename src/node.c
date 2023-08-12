@@ -419,3 +419,10 @@ void node_filter(struct in6_addr *active_addr, size_t active_len)
 		svc_send_module_removed(inactive_nodes[i].intf_id);
 	}
 }
+
+void node_destroy_all(void) {
+	struct gb_interface *inf, *inf_safe;
+	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&node_interface_list, inf, inf_safe, node) {
+		node_destroy_interface(inf);
+	}
+}

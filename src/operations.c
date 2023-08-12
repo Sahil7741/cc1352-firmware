@@ -268,6 +268,14 @@ static void gb_connection_destroy(struct gb_connection *conn)
 	gb_connection_dealloc(conn);
 }
 
+void gb_connection_destroy_all(void) {
+	struct gb_connection *conn, *conn_safe;
+
+	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&gb_connections_list, conn, conn_safe, node) {
+		gb_connection_destroy(conn);
+	}
+}
+
 void gb_interface_destroy(struct gb_interface *intf)
 {
 	struct gb_connection *conn, *conn_safe;

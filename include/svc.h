@@ -48,4 +48,7 @@ int svc_send_module_removed(uint8_t intf_id);
  */
 struct gb_interface *svc_interface(void);
 
+
+void svc_deinit(void);
+
 #endif

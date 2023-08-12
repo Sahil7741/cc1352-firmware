@@ -70,6 +70,12 @@ static struct gb_interface intf = {.id = AP_INF_ID,
 
 struct gb_interface *ap_init(void)
 {
+	size_t i;
+
+	for (i = 0; i < AP_MAX_NODES; ++i)  {
+		k_fifo_init(&ap_ctrl_data.pending_read[i]);
+	}
+
 	return &intf;
 }
 
@@ -85,4 +91,17 @@ int ap_rx_submit(struct gb_message *msg)
 struct gb_interface *ap_interface(void)
 {
 	return &intf;
+}
+
+void ap_deinit(void) {
+	size_t i;
+	struct gb_message *msg;
+
+	for (i = 0; i < AP_MAX_NODES; ++i)  {
+		msg = k_fifo_get(&ap_ctrl_data.pending_read[i], K_NO_WAIT);
+		while (msg) {
+			gb_message_dealloc(msg);
+			msg = k_fifo_get(&ap_ctrl_data.pending_read[i], K_NO_WAIT);
+		}
+	}
 }

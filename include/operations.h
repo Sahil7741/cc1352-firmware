@@ -281,4 +281,6 @@ void gb_connections_process_all(gb_connection_callback cb);
 
 void gb_interface_destroy(struct gb_interface *intf);
 
+void gb_connection_destroy_all(void);
+
 #endif

@@ -34,4 +34,7 @@ int ap_rx_submit(struct gb_message *msg);
  */
 struct gb_interface *ap_interface(void);
 
+
+void ap_deinit(void);
+
 #endif

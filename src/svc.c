@@ -555,3 +555,13 @@ struct gb_interface *svc_interface(void)
 
 	return NULL;
 }
+
+void svc_deinit(void) {
+	struct gb_message *msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
+	atomic_set_bit_to(svc_is_read_flag, 0, false);
+
+	while (msg) {
+		gb_message_dealloc(msg);
+		msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
+	}
+}

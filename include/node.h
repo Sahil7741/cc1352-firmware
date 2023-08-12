@@ -45,4 +45,6 @@ struct gb_interface *node_find_by_id(uint8_t intf_id);
 
 void node_filter(struct in6_addr *active_addr, size_t active_len);
 
+void node_destroy_all(void);
+
 #endif
