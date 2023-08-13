@@ -5,10 +5,10 @@
 
 #include "node.h"
 #include "greybus_protocol.h"
-#include "operations.h"
 #include "svc.h"
 #include <zephyr/net/net_ip.h>
-#include "zephyr/sys/dlist.h"
+#include <zephyr/sys/dlist.h>
+#include <assert.h>
 #include <errno.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
@@ -71,22 +71,23 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 	size_t payload_size;
 
 	ret = read_data(sock, &hdr, sizeof(struct gb_operation_msg_hdr));
-	if (ret <= 0) {
+	if (ret != sizeof(struct gb_operation_msg_hdr)) {
 		*flag = ret == 0;
 		goto early_exit;
 	}
 
 	payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
 	msg = k_malloc(sizeof(struct gb_message) + payload_size);
-	if (msg == NULL) {
+	if (!msg) {
 		LOG_ERR("Failed to allocate node message");
-		goto free_msg;
+		goto early_exit;
 	}
 
 	memcpy(&msg->header, &hdr, sizeof(struct gb_operation_msg_hdr));
 	msg->payload_size = payload_size;
 	ret = read_data(sock, msg->payload, msg->payload_size);
-	if (ret < 0) {
+	if (ret != msg->payload_size) {
+		*flag = ret == 0;
 		goto free_msg;
 	}
 
@@ -103,12 +104,14 @@ static int gb_message_send(int sock, const struct gb_message *msg)
 	int ret;
 
 	ret = write_data(sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
-	if (ret < 0) {
+	if (ret != sizeof(struct gb_operation_msg_hdr)) {
+		LOG_ERR("Failed to send Greybus Message Header to node");
 		goto early_exit;
 	}
 
 	ret = write_data(sock, msg->payload, msg->payload_size);
-	if (ret < 0) {
+	if (ret != msg->payload_size) {
+		LOG_ERR("Failed to send Greybus Message Payload to node");
 		goto early_exit;
 	}
 
@@ -133,8 +136,7 @@ static int connect_to_node(const struct sockaddr *addr)
 
 	if (sock < 0) {
 		LOG_ERR("Failed to create socket %d", errno);
-		ret = sock;
-		goto fail;
+		return sock;
 	}
 
 	ret = zsock_connect(sock, addr, addr_size);
@@ -154,9 +156,8 @@ static int *cports_alloc(size_t len)
 {
 	int *cports;
 	size_t i;
-	size_t size_in_bytes = sizeof(int) * len;
 
-	cports = k_malloc(size_in_bytes);
+	cports = k_malloc(sizeof(int) * len);
 	if (!cports) {
 		return NULL;
 	}
@@ -171,7 +172,7 @@ static int *cports_alloc(size_t len)
 static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length)
 {
 	if (new_length == 0) {
-		free(original_cports);
+		k_free(original_cports);
 		return NULL;
 	}
 
@@ -208,12 +209,12 @@ static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cpor
 	if (!ctrl_data->cports) {
 		return -ENOMEM;
 	}
+	/* Realloc will never shrink */
 	ctrl_data->cports_len = MAX(cport_id + 1, ctrl_data->cports_len);
 
 	if (ctrl_data->cports[cport_id] != -1) {
 		LOG_ERR("Cannot create multiple connections to a cport");
-		ret = -EEXIST;
-		goto early_exit;
+		return -EEXIST;
 	}
 
 	ret = connect_to_node((struct sockaddr *)&node_addr);
@@ -223,7 +224,6 @@ static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cpor
 
 	ctrl_data->cports[cport_id] = ret;
 
-early_exit:
 	return ret;
 }
 
@@ -232,6 +232,11 @@ static void node_intf_destroy_connection(struct gb_controller *ctrl, uint16_t cp
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
 	if (cport_id >= ctrl_data->cports_len) {
+		return;
+	}
+
+	if (ctrl_data->cports[cport_id] < 0) {
+		LOG_ERR("Node Cport %u is not active", cport_id);
 		return;
 	}
 
@@ -244,17 +249,17 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	int ret;
 	struct zsock_pollfd fd[1];
 	bool flag = false;
-	struct gb_message *msg = NULL;
+	struct gb_message *msg;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
 	if (cport_id >= ctrl_data->cports_len) {
 		LOG_ERR("Cport ID greater than Cports Length");
-		goto early_exit;
+		return NULL;
 	}
 
 	if (ctrl_data->cports[cport_id] < 0) {
 		LOG_ERR("Cport ID %u is not active for reading", cport_id);
-		goto early_exit;
+		return NULL;
 	}
 
 	fd[0].fd = ctrl_data->cports[cport_id];
@@ -262,19 +267,21 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 
 	ret = zsock_poll(fd, 1, 0);
 	if (ret <= 0) {
-		goto early_exit;
+		return NULL;
 	}
 
-	if (fd[0].revents & ZSOCK_POLLIN) {
-		msg = gb_message_receive(fd[0].fd, &flag);
-
-		if (flag) {
-			LOG_ERR("Socket of Cport %u closed by Peer Node", cport_id);
-			ctrl->destroy_connection(ctrl, cport_id);
-		}
+	if (!(fd[0].revents & ZSOCK_POLLIN)) {
+		return NULL;
 	}
 
-early_exit:
+	msg = gb_message_receive(fd[0].fd, &flag);
+
+	/* FIXME: Try to reconnect */
+	if (flag) {
+		LOG_ERR("Socket of Cport %u closed by Peer Node", cport_id);
+		ctrl->destroy_connection(ctrl, cport_id);
+	}
+
 	return msg;
 }
 
@@ -301,7 +308,7 @@ free_msg:
 	return ret;
 }
 
-struct gb_interface *node_create_interface(struct in6_addr *addr)
+static struct gb_interface *node_create_interface(struct in6_addr *addr)
 {
 	int ret;
 	struct node_control_data *ctrl_data;
@@ -358,21 +365,6 @@ struct gb_interface *node_find_by_id(uint8_t id)
 	return NULL;
 }
 
-struct gb_interface *node_find_by_addr(struct in6_addr *addr)
-{
-	struct gb_interface *inf;
-	struct node_control_data *ctrl_data;
-
-	SYS_DLIST_FOR_EACH_CONTAINER(&node_interface_list, inf, node) {
-		ctrl_data = inf->controller.ctrl_data;
-		if (net_ipv6_addr_cmp(&ctrl_data->addr, addr)) {
-			return inf;
-		}
-	}
-
-	return NULL;
-}
-
 struct active_node {
 	struct in6_addr addr;
 	uint8_t intf_id;
@@ -407,22 +399,25 @@ void node_filter(struct in6_addr *active_addr, size_t active_len)
 			}
 		}
 
-		// Handle New Node
+		/* Handle New Node */
 		if (!flag) {
 			inf = node_create_interface(&active_addr[i]);
 			svc_send_module_inserted(inf->id);
 		}
 	}
 
-	// Handle Removed Modules
+	/* Handle Removed Modules */
 	for (i = 0; i < pos; ++i) {
 		svc_send_module_removed(inactive_nodes[i].intf_id);
 	}
 }
 
-void node_destroy_all(void) {
+void node_destroy_all(void)
+{
 	struct gb_interface *inf, *inf_safe;
 	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&node_interface_list, inf, inf_safe, node) {
 		node_destroy_interface(inf);
 	}
+
+	assert(!k_mem_slab_num_used_get(&node_control_data_slab));
 }

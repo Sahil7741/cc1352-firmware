@@ -7,15 +7,9 @@
 #define _NODE_H_
 
 #include <zephyr/net/net_ip.h>
+#include "operations.h"
 
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
-
-/*
- * Find tcp greybus node by IPv6 address
- *
- * @param address to search for
- */
-struct gb_interface *node_find_by_addr(struct in6_addr *addr);
 
 /*
  * Destroy a tcp greybus inteface
@@ -23,15 +17,6 @@ struct gb_interface *node_find_by_addr(struct in6_addr *addr);
  * @return greybus interface
  */
 void node_destroy_interface(struct gb_interface *intf);
-
-/*
- * Create a new tcp greybus node interface
- *
- * @param IPv6 address of new interface
- *
- * @return allocated greybus interface
- */
-struct gb_interface *node_create_interface(struct in6_addr *addr);
 
 /*
  * Find greybus node by interface ID
@@ -42,9 +27,19 @@ struct gb_interface *node_create_interface(struct in6_addr *addr);
  */
 struct gb_interface *node_find_by_id(uint8_t intf_id);
 
-
+/*
+ * Checks if any new nodes have been added or any previous nodes removed.
+ *
+ * @param list of nodes discovered
+ * @param lenght of nodes list
+ */
 void node_filter(struct in6_addr *active_addr, size_t active_len);
 
+/*
+ * Destroy all current node interfaces.
+ *
+ * Note: This does not destroy the connections
+ */
 void node_destroy_all(void);
 
 #endif
