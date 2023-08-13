@@ -6,8 +6,6 @@
 #include "ap.h"
 #include "operations.h"
 
-#define AP_MAX_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
-
 struct ap_controller_data {
 	struct k_fifo pending_read[AP_MAX_NODES];
 };
@@ -16,6 +14,7 @@ static int ap_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint
 {
 	ARG_UNUSED(ctrl);
 
+	/* We use padding to pass AP Cport */
 	memcpy(msg->header.pad, &cport_id, sizeof(uint16_t));
 	gb_message_hdlc_send(msg);
 	gb_message_dealloc(msg);
@@ -50,6 +49,7 @@ static void ap_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cport
 		return;
 	}
 
+	/* Deallocate all pending greybus messages */
 	msg = k_fifo_get(&ctrl_data->pending_read[cport_id], K_NO_WAIT);
 	while (msg) {
 		gb_message_dealloc(msg);
@@ -70,12 +70,6 @@ static struct gb_interface intf = {.id = AP_INF_ID,
 
 struct gb_interface *ap_init(void)
 {
-	size_t i;
-
-	for (i = 0; i < AP_MAX_NODES; ++i)  {
-		k_fifo_init(&ap_ctrl_data.pending_read[i]);
-	}
-
 	return &intf;
 }
 
@@ -93,15 +87,6 @@ struct gb_interface *ap_interface(void)
 	return &intf;
 }
 
-void ap_deinit(void) {
-	size_t i;
-	struct gb_message *msg;
-
-	for (i = 0; i < AP_MAX_NODES; ++i)  {
-		msg = k_fifo_get(&ap_ctrl_data.pending_read[i], K_NO_WAIT);
-		while (msg) {
-			gb_message_dealloc(msg);
-			msg = k_fifo_get(&ap_ctrl_data.pending_read[i], K_NO_WAIT);
-		}
-	}
+void ap_deinit(void)
+{
 }
