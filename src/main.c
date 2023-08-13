@@ -62,7 +62,7 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 		if (svc_is_ready()) {
 			k_yield();
 		} else {
-			k_sleep(K_MSEC(5000));
+			k_msleep(500);
 		}
 	}
 }
