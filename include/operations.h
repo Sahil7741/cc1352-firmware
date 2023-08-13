@@ -169,15 +169,6 @@ static inline bool gb_message_is_success(const struct gb_message *msg)
 }
 
 /*
- * Send a greybus message over HDLC
- *
- * @param Greybus message
- *
- * TODO: Move to hdlc
- */
-int gb_message_hdlc_send(const struct gb_message *msg);
-
-/*
  * Create a greybus connection between two interfaces
  *
  * @param Greybus AP Interface
@@ -204,6 +195,26 @@ int gb_destroy_connection(struct gb_interface *intf1, struct gb_interface *intf2
 			  uint16_t intf1_cport_id, uint16_t intf2_cport_id);
 
 /*
+ * Allocate Greybus message
+ *
+ * @param Payload len
+ * @param Response Type
+ * @param Operation ID of Request
+ * @param Status
+ *
+ * @return greybus message allocated on heap. Null in case of errro
+ */
+struct gb_message *gb_message_alloc(size_t payload_len, uint8_t message_type, uint16_t operation_id,
+				    uint8_t status);
+
+/*
+ * Deallocate a greybus message.
+ *
+ * @param pointer to the message to deallcate
+ */
+void gb_message_dealloc(struct gb_message *msg);
+
+/*
  * Allocate a greybus request message
  *
  * @param Payload
@@ -221,22 +232,21 @@ struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_
  *
  * @param Payload
  * @param Payload len
- * @param Response Type
- * @param Operation ID
+ * @param Request Type
+ * @param Operation ID of Request
  * @param Status
  *
  * @return greybus message allocated on heap. Null in case of errro
  */
-struct gb_message *gb_message_response_alloc(const void *payload, size_t payload_len,
-					     uint8_t response_type, uint16_t operation_id,
-					     uint8_t status);
-
-/*
- * Deallocate a greybus message.
- *
- * @param pointer to the message to deallcate
- */
-void gb_message_dealloc(struct gb_message *msg);
+static inline struct gb_message *gb_message_response_alloc(const void *payload, size_t payload_len,
+							   uint8_t request_type,
+							   uint16_t operation_id, uint8_t status)
+{
+	struct gb_message *msg =
+		gb_message_alloc(payload_len, OP_RESPONSE | request_type, operation_id, status);
+	memcpy(msg->payload, payload, payload_len);
+	return msg;
+}
 
 /*
  * Allocate a greybus interface
@@ -273,14 +283,49 @@ struct gb_interface *find_interface_by_id(uint8_t intf_id);
 
 /*
  * Execute a function on all active connections
- *
- * @param input function to run on the connection
  */
-void gb_connections_process_all(gb_connection_callback cb);
+void gb_connection_process_all();
 
-
+/*
+ * This removes all the connections associated with an interface before deallocting it.
+ *
+ * @param interface
+ */
 void gb_interface_destroy(struct gb_interface *intf);
 
+/*
+ * Remove all greybus connections
+ *
+ * Note: This does not remove the interfaces
+ */
 void gb_connection_destroy_all(void);
+
+/*
+ * Process a Greybus connection. This means passing messages between the 2 interfaces
+ *
+ * @param greybus connection
+ *
+ * @return Number of messages exchanged
+ */
+static inline uint8_t gb_connection_process(struct gb_connection *conn)
+{
+	uint8_t count = 0;
+	struct gb_message *msg;
+
+	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
+	if (msg) {
+		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
+						 conn->peer_cport_id);
+		count++;
+	}
+
+	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
+	if (msg) {
+		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
+		count++;
+	}
+
+	return count;
+}
 
 #endif

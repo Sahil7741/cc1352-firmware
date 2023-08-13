@@ -33,22 +33,6 @@ static void apbridge_entry(void *, void *, void *);
 
 K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 6, 0, 0);
 
-static void connection_callback(struct gb_connection *conn)
-{
-	struct gb_message *msg;
-
-	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
-	if (msg != NULL) {
-		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
-						 conn->peer_cport_id);
-	}
-
-	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
-	if (msg != NULL) {
-		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
-	}
-}
-
 static void apbridge_entry(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p1);
@@ -57,7 +41,7 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 
 	while (1) {
 		/* Go through all connections */
-		gb_connections_process_all(connection_callback);
+		gb_connection_process_all();
 		// k_yield();
 		if (svc_is_ready()) {
 			k_yield();

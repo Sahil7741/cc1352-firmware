@@ -31,28 +31,6 @@ static atomic_t operation_id_counter = ATOMIC_INIT(OPERATION_ID_START);
 static atomic_t interface_id_counter = ATOMIC_INIT(INTERFACE_ID_START);
 static sys_dlist_t gb_connections_list = SYS_DLIST_STATIC_INIT(&gb_connections_list);
 
-static struct gb_message *gb_message_alloc(const void *payload, size_t payload_len,
-					   uint8_t message_type, uint16_t operation_id,
-					   uint8_t status)
-{
-	struct gb_message *msg;
-
-	msg = k_malloc(sizeof(struct gb_message) + payload_len);
-	if (msg == NULL) {
-		LOG_WRN("Failed to allocate Greybus request message");
-		return NULL;
-	}
-
-	msg->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
-	msg->header.id = operation_id;
-	msg->header.type = message_type;
-	msg->header.status = status;
-	msg->payload_size = payload_len;
-	memcpy(msg->payload, payload, msg->payload_size);
-
-	return msg;
-}
-
 static uint16_t new_operation_id(void)
 {
 	atomic_val_t temp = atomic_inc(&operation_id_counter);
@@ -78,18 +56,6 @@ void gb_message_dealloc(struct gb_message *msg)
 	k_free(msg);
 }
 
-int gb_message_hdlc_send(const struct gb_message *msg)
-{
-	char buffer[HDLC_MAX_BLOCK_SIZE];
-
-	memcpy(buffer, &msg->header, sizeof(struct gb_operation_msg_hdr));
-	memcpy(&buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload, msg->payload_size);
-
-	hdlc_block_send_sync(buffer, msg->header.size, ADDRESS_GREYBUS, 0x03);
-
-	return 0;
-}
-
 struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 					   struct gb_interface *inf_peer, uint16_t ap_cport,
 					   uint16_t peer_cport)
@@ -106,13 +72,13 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 	ret = inf_peer->controller.create_connection(&inf_peer->controller, peer_cport);
 	if (ret < 0) {
 		LOG_ERR("Failed to create Greybus peer connection");
-		return NULL;
+		goto destroy_ap_connection;
 	}
 
 	ret = k_mem_slab_alloc(&gb_connection_slab, (void **)&conn, K_NO_WAIT);
 	if (ret) {
 		LOG_ERR("Failed to allocate Greybus connection");
-		return NULL;
+		goto destroy_peer_connection;
 	}
 
 	conn->inf_ap = inf_ap;
@@ -124,36 +90,33 @@ struct gb_connection *gb_create_connection(struct gb_interface *inf_ap,
 	sys_dlist_append(&gb_connections_list, &conn->node);
 
 	return conn;
+
+destroy_peer_connection:
+	inf_peer->controller.destroy_connection(&inf_peer->controller, peer_cport);
+destroy_ap_connection:
+	inf_ap->controller.destroy_connection(&inf_ap->controller, ap_cport);
+	return NULL;
 }
 
 static void gb_flush_connection(struct gb_connection *conn)
 {
-	struct gb_message *msg;
-	bool flag;
-
-	do {
-		flag = false;
-		msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
-		if (msg != NULL) {
-			conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
-							 conn->peer_cport_id);
-			flag = true;
-		}
-
-		msg = conn->inf_peer->controller.read(&conn->inf_peer->controller,
-						      conn->peer_cport_id);
-		if (msg != NULL) {
-			conn->inf_ap->controller.write(&conn->inf_ap->controller, msg,
-						       conn->ap_cport_id);
-			flag = true;
-		}
-	} while (flag);
+	while (gb_connection_process(conn)) {
+	}
 }
 
 static void gb_connection_dealloc(struct gb_connection *conn)
 {
 	sys_dlist_remove(&conn->node);
 	k_mem_slab_free(&gb_connection_slab, (void **)&conn);
+}
+
+static void gb_connection_destroy(struct gb_connection *conn)
+{
+	gb_flush_connection(conn);
+	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, conn->ap_cport_id);
+	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller,
+						      conn->peer_cport_id);
+	gb_connection_dealloc(conn);
 }
 
 int gb_destroy_connection(struct gb_interface *inf_ap, struct gb_interface *inf_peer,
@@ -197,15 +160,9 @@ struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_
 {
 	uint16_t operation_id = is_oneshot ? 0 : new_operation_id();
 
-	return gb_message_alloc(payload, payload_len, request_type, operation_id, 0);
-}
-
-struct gb_message *gb_message_response_alloc(const void *payload, size_t payload_len,
-					     uint8_t request_type, uint16_t operation_id,
-					     uint8_t status)
-{
-	return gb_message_alloc(payload, payload_len, OP_RESPONSE | request_type, operation_id,
-				status);
+	struct gb_message *msg = gb_message_alloc(payload_len, request_type, operation_id, 0);
+	memcpy(msg->payload, payload, payload_len);
+	return msg;
 }
 
 struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
@@ -250,25 +207,17 @@ struct gb_interface *find_interface_by_id(uint8_t intf_id)
 	}
 }
 
-void gb_connections_process_all(gb_connection_callback cb)
+void gb_connection_process_all()
 {
 	struct gb_connection *conn;
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&gb_connections_list, conn, node) {
-		cb(conn);
+		gb_connection_process(conn);
 	}
 }
 
-static void gb_connection_destroy(struct gb_connection *conn)
+void gb_connection_destroy_all(void)
 {
-	gb_flush_connection(conn);
-	conn->inf_ap->controller.destroy_connection(&conn->inf_ap->controller, conn->ap_cport_id);
-	conn->inf_peer->controller.destroy_connection(&conn->inf_peer->controller,
-						      conn->peer_cport_id);
-	gb_connection_dealloc(conn);
-}
-
-void gb_connection_destroy_all(void) {
 	struct gb_connection *conn, *conn_safe;
 
 	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&gb_connections_list, conn, conn_safe, node) {
@@ -288,4 +237,24 @@ void gb_interface_destroy(struct gb_interface *intf)
 
 	// TODO: Maybe move this function to controller
 	node_destroy_interface(intf);
+}
+
+struct gb_message *gb_message_alloc(size_t payload_len, uint8_t message_type, uint16_t operation_id,
+				    uint8_t status)
+{
+	struct gb_message *msg;
+
+	msg = k_malloc(sizeof(struct gb_message) + payload_len);
+	if (msg == NULL) {
+		LOG_WRN("Failed to allocate Greybus request message");
+		return NULL;
+	}
+
+	msg->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
+	msg->header.id = operation_id;
+	msg->header.type = message_type;
+	msg->header.status = status;
+	msg->payload_size = payload_len;
+
+	return msg;
 }

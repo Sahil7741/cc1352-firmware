@@ -76,4 +76,21 @@ uint32_t hdlc_rx_start(uint8_t **buffer);
  */
 int hdlc_rx_finish(uint32_t written);
 
+/*
+ * Send a greybus message over HDLC
+ *
+ * @param Greybus message
+ */
+static inline int gb_message_hdlc_send(const struct gb_message *msg)
+{
+	char buffer[HDLC_MAX_BLOCK_SIZE];
+
+	memcpy(buffer, &msg->header, sizeof(struct gb_operation_msg_hdr));
+	memcpy(&buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload, msg->payload_size);
+
+	hdlc_block_send_sync(buffer, msg->header.size, ADDRESS_GREYBUS, 0x03);
+
+	return 0;
+}
+
 #endif
