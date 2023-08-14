@@ -12,6 +12,8 @@ static uint8_t hdlc_uart_buffer[256];
 
 static int hdlc_uart_out(uint8_t *data, size_t length, void *ctx)
 {
+	ARG_UNUSED(ctx);
+
 	hdlc_block_send_sync(data, length, ADDRESS_DBG, 0x03);
 	return length;
 }

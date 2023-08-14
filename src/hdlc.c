@@ -7,9 +7,7 @@
  */
 
 #include "hdlc.h"
-#include "ap.h"
 #include "greybus_protocol.h"
-#include "mcumgr.h"
 #include <string.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>

@@ -22,7 +22,7 @@
 struct gb_interface *ap_init(void);
 
 /*
- * De-Initilaize AP Interface
+ * De-Initialize AP Interface
  *
  * Note: This should be called only after all connections have been closed. This does not take care
  * of closing connections or flushing pending data.
@@ -34,7 +34,7 @@ void ap_deinit(void);
  *
  * @param greybus message
  *
- * @return 0 if successfull, negative in case of error
+ * @return 0 if successful, negative in case of error
  */
 int ap_rx_submit(struct gb_message *msg);
 

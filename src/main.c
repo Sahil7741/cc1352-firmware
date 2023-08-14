@@ -11,16 +11,11 @@
 #include "node.h"
 #include "svc.h"
 #include "greybus_connections.h"
-#include <stdbool.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/net/net_config.h>
-#include <zephyr/net/net_if.h>
 #include <zephyr/net/net_ip.h>
-#include <zephyr/net/socket.h>
-#include <zephyr/sys/dlist.h>
 
 #define UART_DEVICE_NODE        DT_CHOSEN(zephyr_shell_uart)
 #define NODE_DISCOVERY_INTERVAL 5000
@@ -173,7 +168,7 @@ void main(void)
 
 	uart_irq_rx_enable(uart_dev);
 
-	sock = mdns_socket_open_ipv6(&mdns_addr, 2000);
+	sock = mdns_socket_open_ipv6(&mdns_addr);
 
 	while (1) {
 		k_msleep(NODE_DISCOVERY_INTERVAL);
@@ -189,7 +184,7 @@ void main(void)
 			continue;
 		}
 
-		ret = mdns_query_recv(sock, node_array, MAX_GREYBUS_NODES, query, strlen(query));
+		ret = mdns_query_recv(sock, node_array, MAX_GREYBUS_NODES, query, strlen(query), 2000);
 		if (ret < 0) {
 			LOG_WRN("Failed to get greybus nodes");
 			continue;

@@ -1,6 +1,5 @@
 #include "mdns.h"
 #include <zephyr/logging/log.h>
-#include <zephyr/posix/fcntl.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -153,8 +152,7 @@ mdns_get_next_substring(const void *rawdata, size_t size, size_t offset) {
   return pair;
 }
 
-static int mdns_socket_setup_ipv6(int sock, const struct in6_addr *jaddr,
-                                  int timeout_msec) {
+static int mdns_socket_setup_ipv6(int sock, const struct in6_addr *jaddr) {
   unsigned int reuseaddr = 1;
 
   if (!join_multicast_group(jaddr)) {
@@ -564,7 +562,7 @@ early_exit:
 
 size_t mdns_query_recv(int sock, struct in6_addr *addr_list,
                        size_t addr_list_len, const char *query,
-                       size_t query_len) {
+                       size_t query_len, int timeout) {
 
 	int ret;
   size_t total = 0;
@@ -572,7 +570,7 @@ size_t mdns_query_recv(int sock, struct in6_addr *addr_list,
 
 	fds[0].fd = sock;
 	fds[0].events = ZSOCK_POLLIN;
-	ret = zsock_poll(fds, 1, 2000);
+	ret = zsock_poll(fds, 1, timeout);
 
   while(ret > 0) {
     ret = mdns_query_recv_internal(sock, &addr_list[total], query, query_len);
@@ -586,11 +584,11 @@ size_t mdns_query_recv(int sock, struct in6_addr *addr_list,
   return total;
 }
 
-int mdns_socket_open_ipv6(const struct in6_addr *jaddr, int timeout_msec) {
+int mdns_socket_open_ipv6(const struct in6_addr *jaddr) {
   int sock = (int)zsock_socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
   if (sock < 0)
     return -1;
-  if (mdns_socket_setup_ipv6(sock, jaddr, timeout_msec)) {
+  if (mdns_socket_setup_ipv6(sock, jaddr)) {
     mdns_socket_close(sock);
     return -1;
   }

@@ -15,7 +15,6 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/net/socket.h>
 #include <zephyr/sys/atomic.h>
 
 #define ENDO_ID           0x4755
@@ -377,7 +376,8 @@ static void svc_interface_resume_handler(struct gb_message *msg)
 {
 	struct gb_svc_intf_resume_response resp = {.status = GB_SVC_OP_SUCCESS};
 
-	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response), GB_SVC_OP_SUCCESS);
+	svc_response_helper(msg, &resp, sizeof(struct gb_svc_intf_resume_response),
+			    GB_SVC_OP_SUCCESS);
 }
 
 static void svc_module_inserted_response_handler(struct gb_message *msg)
@@ -558,7 +558,8 @@ struct gb_interface *svc_interface(void)
 	return NULL;
 }
 
-void svc_deinit(void) {
+void svc_deinit(void)
+{
 	struct gb_message *msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
 

@@ -5,16 +5,10 @@
 
 #include "greybus_interfaces.h"
 #include "ap.h"
-#include "greybus_protocol.h"
-#include "hdlc.h"
 #include "node.h"
 #include "svc.h"
-#include "zephyr/kernel.h"
-#include <errno.h>
-#include <limits.h>
-#include <stdint.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/net/socket.h>
 #include <zephyr/sys/dlist.h>
 
 #define INTERFACE_ID_START     2
