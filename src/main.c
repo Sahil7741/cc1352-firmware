@@ -11,6 +11,7 @@
 #include "node.h"
 #include "operations.h"
 #include "svc.h"
+#include "greybus_connections.h"
 #include <stdbool.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
@@ -108,7 +109,7 @@ static int control_process_frame(const char *buffer, size_t buffer_len)
 		LOG_INF("Starting SVC");
 		ap = ap_init();
 		svc = svc_init();
-		conn = gb_create_connection(ap, svc, 0, 0);
+		conn = gb_connection_create(ap, svc, 0, 0);
 		svc_send_version();
 		apbridge_start();
 		return 0;

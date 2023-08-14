@@ -4,7 +4,7 @@
  */
 
 #include "apbridge.h"
-#include "operations.h"
+#include "greybus_connections.h"
 #include <zephyr/kernel.h>
 
 static void apbridge_entry(void *p1, void *p2, void *p3)

@@ -5,6 +5,7 @@
  * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
 
+#include "greybus_connections.h"
 #include "svc.h"
 #include "ap.h"
 #include "greybus_protocol.h"
@@ -326,7 +327,7 @@ static void svc_connection_create_handler(struct gb_message *msg)
 		goto fail;
 	}
 
-	conn = gb_create_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
+	conn = gb_connection_create(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (!conn) {
 		LOG_ERR("Failed to create connection");
 		goto fail;
@@ -357,7 +358,7 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 		goto fail;
 	}
 
-	ret = gb_destroy_connection(intf_1, intf_2, req->cport1_id, req->cport2_id);
+	ret = gb_connection_destroy(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (ret < 0) {
 		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
 			"and Cport 2: %u of Interface 2: %u",
@@ -403,7 +404,8 @@ static void svc_module_removed_response_handler(struct gb_message *msg)
 					LOG_ERR("Failed to find the removed interface");
 				}
 
-				gb_interface_destroy(intf);
+				gb_connection_destroy_by_interface(intf);
+				node_destroy_interface(intf);
 				k_mem_slab_free(&svc_module_removed_map, (void **)&item);
 				break;
 			}

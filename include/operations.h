@@ -12,7 +12,6 @@
 #include <zephyr/sys/dlist.h>
 
 struct gb_controller;
-struct gb_connection;
 
 /*
  * Callabck for reading from an interface
@@ -55,13 +54,6 @@ typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_
 typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint16_t);
 
 /*
- * Callback to process an active greybus connection
- *
- * @param active greybus connection
- */
-typedef void (*gb_connection_callback)(struct gb_connection *);
-
-/*
  * Struct to represent greybus message. This is a variable sized type.
  *
  * @param fifo_reserved: reserved for fifo
@@ -101,22 +93,6 @@ struct gb_controller {
 struct gb_interface {
 	uint8_t id;
 	struct gb_controller controller;
-	sys_dnode_t node;
-};
-
-/*
- * A connection between two greybus interfaces
- *
- * @param inf_ap: Greybus interface of AP.
- * @param inf_peer: Greybus interface of the peer
- * @param ap_cport_id: Cport of AP to connect to.
- * @param peer_cport_id: Cport of Peer to connect to.
- */
-struct gb_connection {
-	struct gb_interface *inf_ap;
-	struct gb_interface *inf_peer;
-	uint16_t ap_cport_id;
-	uint16_t peer_cport_id;
 	sys_dnode_t node;
 };
 
@@ -167,32 +143,6 @@ static inline bool gb_message_is_success(const struct gb_message *msg)
 {
 	return gb_hdr_is_success(&msg->header);
 }
-
-/*
- * Create a greybus connection between two interfaces
- *
- * @param Greybus AP Interface
- * @param Greybus Peer Interface
- * @param Greybus AP Interface Cport ID
- * @param Greybus Peer Interface Cport ID
- *
- * @return greybus connection allocated on heap. Null in case of errro
- */
-struct gb_connection *gb_create_connection(struct gb_interface *intf1, struct gb_interface *intf2,
-					   uint16_t intf1_cport_id, uint16_t intf2_cport_id);
-
-/*
- * Destroy greybus connection
- *
- * @param interface 1
- * @param interface 2
- * @param interface 1 cport
- * @param interface 2 cport
- *
- * @return 0 on success. Negative in case of error
- */
-int gb_destroy_connection(struct gb_interface *intf1, struct gb_interface *intf2,
-			  uint16_t intf1_cport_id, uint16_t intf2_cport_id);
 
 /*
  * Allocate Greybus message
@@ -280,52 +230,5 @@ void gb_interface_dealloc(struct gb_interface *intf);
  * @param greybus interface
  */
 struct gb_interface *find_interface_by_id(uint8_t intf_id);
-
-/*
- * Execute a function on all active connections
- */
-void gb_connection_process_all();
-
-/*
- * This removes all the connections associated with an interface before deallocting it.
- *
- * @param interface
- */
-void gb_interface_destroy(struct gb_interface *intf);
-
-/*
- * Remove all greybus connections
- *
- * Note: This does not remove the interfaces
- */
-void gb_connection_destroy_all(void);
-
-/*
- * Process a Greybus connection. This means passing messages between the 2 interfaces
- *
- * @param greybus connection
- *
- * @return Number of messages exchanged
- */
-static inline uint8_t gb_connection_process(struct gb_connection *conn)
-{
-	uint8_t count = 0;
-	struct gb_message *msg;
-
-	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
-	if (msg) {
-		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
-						 conn->peer_cport_id);
-		count++;
-	}
-
-	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
-	if (msg) {
-		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
-		count++;
-	}
-
-	return count;
-}
 
 #endif
