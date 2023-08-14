@@ -81,7 +81,7 @@ static inline bool gb_message_is_success(const struct gb_message *msg)
  * @param Operation ID of Request
  * @param Status
  *
- * @return greybus message allocated on heap. Null in case of errro
+ * @return greybus message allocated on heap. Null in case of error
  */
 struct gb_message *gb_message_alloc(size_t payload_len, uint8_t message_type, uint16_t operation_id,
 				    uint8_t status);
@@ -101,7 +101,7 @@ void gb_message_dealloc(struct gb_message *msg);
  * @param Request Type
  * @param Is one shot
  *
- * @return greybus message allocated on heap. Null in case of errro
+ * @return greybus message allocated on heap. Null in case of error
  */
 struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,
 					    uint8_t request_type, bool is_oneshot);
@@ -115,7 +115,7 @@ struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_
  * @param Operation ID of Request
  * @param Status
  *
- * @return greybus message allocated on heap. Null in case of errro
+ * @return greybus message allocated on heap. Null in case of error
  */
 static inline struct gb_message *gb_message_response_alloc(const void *payload, size_t payload_len,
 							   uint8_t request_type,

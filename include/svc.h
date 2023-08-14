@@ -18,7 +18,7 @@
 struct gb_interface *svc_init(void);
 
 /*
- * Check if SVC is ready. This mostly means if SVC Hello was successfuly
+ * Check if SVC is ready. This mostly means if SVC Hello was successfully
  * executed.
  */
 bool svc_is_ready(void);
@@ -35,7 +35,7 @@ int svc_send_version(void);
  *
  * @param interface id of the new module
  *
- * @return 0 if successfuly, negative in case of error
+ * @return 0 if successfully, negative in case of error
  */
 int svc_send_module_inserted(uint8_t intf_id);
 
@@ -44,7 +44,7 @@ int svc_send_module_inserted(uint8_t intf_id);
  *
  * @param interface id of the module removed
  *
- * @return 0 if successfuly, negative in case of error
+ * @return 0 if successfully, negative in case of error
  */
 int svc_send_module_removed(uint8_t intf_id);
 

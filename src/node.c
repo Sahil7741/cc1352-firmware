@@ -48,20 +48,20 @@ static int write_data(int sock, const void *data, size_t len)
 static int read_data(int sock, void *data, size_t len)
 {
 	int ret;
-	int recieved = 0;
+	int received = 0;
 
-	while (recieved < len) {
-		ret = zsock_recv(sock, recieved + (char *)data, len - recieved, 0);
+	while (received < len) {
+		ret = zsock_recv(sock, received + (char *)data, len - received, 0);
 		if (ret < 0) {
-			LOG_ERR("Failed to recieve data");
+			LOG_ERR("Failed to receive data");
 			return ret;
 		} else if (ret == 0) {
 			/* Socket was closed by peer */
 			return 0;
 		}
-		recieved += ret;
+		received += ret;
 	}
-	return recieved;
+	return received;
 }
 
 static struct gb_message *gb_message_receive(int sock, bool *flag)

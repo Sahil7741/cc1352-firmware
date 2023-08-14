@@ -510,7 +510,7 @@ static size_t mdns_query_recv_internal(int sock, struct in6_addr *addrptr,
                                        const char *query, size_t query_len) {
   int ret;
   size_t data_size, offset;
-  uint16_t flags, questions, answer_rrs;
+  uint16_t questions, answer_rrs;
   struct sockaddr_in6 addr;
   char buffer[MDNS_RESPONSE_BUFFER_SIZE];
   struct sockaddr *saddr = (struct sockaddr *)&addr;
@@ -527,14 +527,13 @@ static size_t mdns_query_recv_internal(int sock, struct in6_addr *addrptr,
   data_size = (size_t)ret;
 
   // uint16_t query_id = mdns_ntohs(data++);
-  data++;
-  flags = mdns_ntohs(data++);
+  // flags = mdns_ntohs(data++);
+  data += 2;
   questions = mdns_ntohs(data++);
   answer_rrs = mdns_ntohs(data++);
   // uint16_t authority_rrs = mdns_ntohs(data++);
   // uint16_t additional_rrs = mdns_ntohs(data++);
   data += 2;
-  (void)sizeof(flags);
 
   // Skip questions part
   for (int i = 0; i < questions; ++i) {
@@ -572,7 +571,7 @@ size_t mdns_query_recv(int sock, struct in6_addr *addr_list,
 	fds[0].events = ZSOCK_POLLIN;
 	ret = zsock_poll(fds, 1, timeout);
 
-  while(ret > 0) {
+  while(ret > 0 && total < addr_list_len) {
     ret = mdns_query_recv_internal(sock, &addr_list[total], query, query_len);
     total += ret;
 

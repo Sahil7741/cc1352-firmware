@@ -56,7 +56,7 @@ typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint1
  *
  * @param read: a non-blocking read function
  * @param write: a non-blocking write function. The ownership of message is
- * trasnferred.
+ * transferred.
  * @param ctrl_data: private controller data
  */
 struct gb_controller {

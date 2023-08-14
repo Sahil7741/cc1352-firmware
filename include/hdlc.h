@@ -46,7 +46,7 @@ struct hdlc_block {
 int hdlc_init(hdlc_process_frame_callback cb);
 
 /*
- * Submit an HDLC Block syncronously
+ * Submit an HDLC Block synchronously
  *
  * @param buffer
  * @param buffer_length
@@ -59,9 +59,9 @@ int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t addre
 			 uint8_t control);
 
 /*
- * Get a buffer to write HDLC message recieved for processing. Make HDLC transport agnostic.
+ * Get a buffer to write HDLC message received for processing. Make HDLC transport agnostic.
  *
- * @param the pointer to underlying buffer which can be userd to write.
+ * @param the pointer to underlying buffer which can be used to write.
  *
  * @return number of bytes that can be written
  */

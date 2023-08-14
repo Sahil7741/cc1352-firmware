@@ -12,7 +12,7 @@
 #define GB_TRANSPORT_TCPIP_BASE_PORT 4242
 
 /*
- * Destroy a tcp greybus inteface
+ * Destroy a tcp greybus interface
  *
  * @return greybus interface
  */
