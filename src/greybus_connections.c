@@ -4,6 +4,8 @@
  */
 
 #include "greybus_connections.h"
+#include <zephyr/logging/log.h>
+#include <zephyr/kernel.h>
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 K_MEM_SLAB_DEFINE_STATIC(gb_connection_slab, sizeof(struct gb_connection), MAX_GREYBUS_CONNECTIONS,

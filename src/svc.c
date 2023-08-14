@@ -11,7 +11,6 @@
 #include "greybus_protocol.h"
 #include "greybus_messages.h"
 #include "node.h"
-#include "operations.h"
 #include <zephyr/sys/dlist.h>
 #include <errno.h>
 #include <zephyr/kernel.h>
@@ -317,12 +316,12 @@ static void svc_connection_create_handler(struct gb_message *msg)
 	struct gb_interface *intf_1, *intf_2;
 	struct gb_connection *conn;
 
-	intf_1 = find_interface_by_id(req->intf1_id);
+	intf_1 = gb_interface_find_by_id(req->intf1_id);
 	if (!intf_1) {
 		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
 		goto fail;
 	}
-	intf_2 = find_interface_by_id(req->intf2_id);
+	intf_2 = gb_interface_find_by_id(req->intf2_id);
 	if (!intf_2) {
 		LOG_DBG("Unknown Interface 2: %u", req->intf2_id);
 		goto fail;
@@ -348,12 +347,12 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 		(struct gb_svc_conn_destroy_request *)msg->payload;
 	struct gb_interface *intf_1, *intf_2;
 
-	intf_1 = find_interface_by_id(req->intf1_id);
+	intf_1 = gb_interface_find_by_id(req->intf1_id);
 	if (!intf_1) {
 		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
 		goto fail;
 	}
-	intf_2 = find_interface_by_id(req->intf2_id);
+	intf_2 = gb_interface_find_by_id(req->intf2_id);
 	if (!intf_2) {
 		LOG_DBG("Unknown Interface 2: %u", req->intf2_id);
 		goto fail;
@@ -400,7 +399,7 @@ static void svc_module_removed_response_handler(struct gb_message *msg)
 		SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&operations_list, item, item_safe, node) {
 			if (msg->header.id == item->opr_id) {
 				sys_dlist_remove(&item->node);
-				intf = find_interface_by_id(item->intf_id);
+				intf = gb_interface_find_by_id(item->intf_id);
 				if (!intf) {
 					LOG_ERR("Failed to find the removed interface");
 				}

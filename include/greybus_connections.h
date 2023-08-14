@@ -8,7 +8,7 @@
 
 #include <zephyr/types.h>
 #include <zephyr/sys/dlist.h>
-#include "operations.h"
+#include "greybus_interfaces.h"
 
 #define MAX_GREYBUS_CONNECTIONS CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 

@@ -4,8 +4,8 @@
  */
 
 #include "ap.h"
-#include "operations.h"
 #include "hdlc.h"
+#include <zephyr/kernel.h>
 
 struct ap_controller_data {
 	struct k_fifo pending_read[AP_MAX_NODES];

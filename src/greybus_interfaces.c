@@ -3,7 +3,7 @@
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
 
-#include "operations.h"
+#include "greybus_interfaces.h"
 #include "ap.h"
 #include "greybus_protocol.h"
 #include "hdlc.h"
@@ -66,7 +66,7 @@ void gb_interface_dealloc(struct gb_interface *intf)
 	k_mem_slab_free(&gb_interface_slab, (void **)&intf);
 }
 
-struct gb_interface *find_interface_by_id(uint8_t intf_id)
+struct gb_interface *gb_interface_find_by_id(uint8_t intf_id)
 {
 	switch (intf_id) {
 	case SVC_INF_ID:

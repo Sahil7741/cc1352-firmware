@@ -6,7 +6,8 @@
 #ifndef _SVC_H_
 #define _SVC_H_
 
-#include "operations.h"
+#include <stdbool.h>
+#include <zephyr/types.h>
 
 #define SVC_INF_ID 0
 
@@ -30,7 +31,7 @@ bool svc_is_ready(void);
 int svc_send_version(void);
 
 /*
- * Send the SVC module inserted event.
+ * Send the SVC module inserted request.
  *
  * @param interface id of the new module
  *
@@ -38,7 +39,13 @@ int svc_send_version(void);
  */
 int svc_send_module_inserted(uint8_t intf_id);
 
-
+/*
+ * Send the SVC module removed request.
+ *
+ * @param interface id of the module removed
+ *
+ * @return 0 if successfuly, negative in case of error
+ */
 int svc_send_module_removed(uint8_t intf_id);
 
 /*
@@ -48,7 +55,9 @@ int svc_send_module_removed(uint8_t intf_id);
  */
 struct gb_interface *svc_interface(void);
 
-
+/*
+ * De-Initialize SVC
+ */
 void svc_deinit(void);
 
 #endif

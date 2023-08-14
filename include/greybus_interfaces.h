@@ -7,8 +7,6 @@
 #define _OPERATIONS_H_
 
 #include "greybus_protocol.h"
-#include <stdbool.h>
-#include <zephyr/net/socket.h>
 #include <zephyr/sys/dlist.h>
 
 struct gb_controller;
@@ -112,6 +110,6 @@ void gb_interface_dealloc(struct gb_interface *intf);
  *
  * @param greybus interface
  */
-struct gb_interface *find_interface_by_id(uint8_t intf_id);
+struct gb_interface *gb_interface_find_by_id(uint8_t intf_id);
 
 #endif

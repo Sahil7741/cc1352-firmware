@@ -9,7 +9,6 @@
 #include "hdlc.h"
 #include "mcumgr.h"
 #include "node.h"
-#include "operations.h"
 #include "svc.h"
 #include "greybus_connections.h"
 #include <stdbool.h>
