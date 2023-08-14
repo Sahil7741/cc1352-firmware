@@ -8,6 +8,7 @@ target_sources(app PRIVATE operations.c)
 target_sources(app PRIVATE mdns.c)
 target_sources(app PRIVATE apbridge.c)
 target_sources(app PRIVATE greybus_connections.c)
+target_sources(app PRIVATE greybus_messages.c)
 
 if (CONFIG_BEAGLEPLAY_GREYBUS_MCUMGR)
   target_sources(app PRIVATE mcumgr.c)

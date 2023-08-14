@@ -7,6 +7,7 @@
 #define _HDLC_H_
 
 #include "operations.h"
+#include "greybus_messages.h"
 #include <stdint.h>
 #include <zephyr/device.h>
 

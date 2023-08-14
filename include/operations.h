@@ -54,21 +54,6 @@ typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_
 typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint16_t);
 
 /*
- * Struct to represent greybus message. This is a variable sized type.
- *
- * @param fifo_reserved: reserved for fifo
- * @param header: greybus msg header.
- * @param payload_size: size of payload in bytes
- * @param payload: heap allocated payload.
- */
-struct gb_message {
-	void *fifo_reserved;
-	struct gb_operation_msg_hdr header;
-	size_t payload_size;
-	uint8_t payload[];
-};
-
-/*
  * Controller for each greybus interface
  *
  * @param read: a non-blocking read function
@@ -95,108 +80,6 @@ struct gb_interface {
 	struct gb_controller controller;
 	sys_dnode_t node;
 };
-
-/*
- * Check if the greybus message header is a response.
- *
- * @param hdr: greybus header
- *
- * @return true if message is response, else false.
- */
-static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr)
-{
-	return hdr->type & GB_TYPE_RESPONSE_FLAG;
-}
-
-/*
- * Check if the greybus message header is a successful.
- *
- * @param hdr: greybus header
- *
- * @return true if message is successful, else false.
- */
-static inline bool gb_hdr_is_success(const struct gb_operation_msg_hdr *hdr)
-{
-	return hdr->status == 0x00;
-}
-
-/*
- * Check if the greybus message is a response.
- *
- * @param msg: greybus message
- *
- * @return true if message is response, else false.
- */
-static inline bool gb_message_is_response(const struct gb_message *msg)
-{
-	return gb_hdr_is_response(&msg->header);
-}
-
-/*
- * Check if the greybus message is a successful.
- *
- * @param msg: greybus message
- *
- * @return true if message is successful, else false.
- */
-static inline bool gb_message_is_success(const struct gb_message *msg)
-{
-	return gb_hdr_is_success(&msg->header);
-}
-
-/*
- * Allocate Greybus message
- *
- * @param Payload len
- * @param Response Type
- * @param Operation ID of Request
- * @param Status
- *
- * @return greybus message allocated on heap. Null in case of errro
- */
-struct gb_message *gb_message_alloc(size_t payload_len, uint8_t message_type, uint16_t operation_id,
-				    uint8_t status);
-
-/*
- * Deallocate a greybus message.
- *
- * @param pointer to the message to deallcate
- */
-void gb_message_dealloc(struct gb_message *msg);
-
-/*
- * Allocate a greybus request message
- *
- * @param Payload
- * @param Payload len
- * @param Request Type
- * @param Is one shot
- *
- * @return greybus message allocated on heap. Null in case of errro
- */
-struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_len,
-					    uint8_t request_type, bool is_oneshot);
-
-/*
- * Allocate a greybus response message
- *
- * @param Payload
- * @param Payload len
- * @param Request Type
- * @param Operation ID of Request
- * @param Status
- *
- * @return greybus message allocated on heap. Null in case of errro
- */
-static inline struct gb_message *gb_message_response_alloc(const void *payload, size_t payload_len,
-							   uint8_t request_type,
-							   uint16_t operation_id, uint8_t status)
-{
-	struct gb_message *msg =
-		gb_message_alloc(payload_len, OP_RESPONSE | request_type, operation_id, status);
-	memcpy(msg->payload, payload, payload_len);
-	return msg;
-}
 
 /*
  * Allocate a greybus interface

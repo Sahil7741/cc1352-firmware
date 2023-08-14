@@ -9,6 +9,7 @@
 #include "svc.h"
 #include "ap.h"
 #include "greybus_protocol.h"
+#include "greybus_messages.h"
 #include "node.h"
 #include "operations.h"
 #include <zephyr/sys/dlist.h>

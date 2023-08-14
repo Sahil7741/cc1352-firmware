@@ -5,6 +5,7 @@
 
 #include "node.h"
 #include "greybus_protocol.h"
+#include "greybus_messages.h"
 #include "svc.h"
 #include <zephyr/net/net_ip.h>
 #include <zephyr/sys/dlist.h>
