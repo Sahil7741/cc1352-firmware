@@ -57,30 +57,6 @@ static void uart_poll_out_crc(const struct device *dev, uint8_t byte, uint16_t *
 	uart_poll_out(dev, byte);
 }
 
-static void block_out(struct hdlc_driver *drv, const struct hdlc_block *block)
-{
-	uint16_t crc = 0xffff;
-
-	uart_poll_out(uart_dev, HDLC_FRAME);
-	uart_poll_out_crc(uart_dev, block->address, &crc);
-
-	if (block->control == 0) {
-		uart_poll_out_crc(uart_dev, drv->send_seq << 1, &crc);
-	} else {
-		uart_poll_out_crc(uart_dev, block->control, &crc);
-	}
-
-	for (int i = 0; i < block->length; i++) {
-		uart_poll_out_crc(uart_dev, block->buffer[i], &crc);
-	}
-
-	uint16_t crc_calc = crc ^ 0xffff;
-
-	uart_poll_out_crc(uart_dev, crc_calc, &crc);
-	uart_poll_out_crc(uart_dev, crc_calc >> 8, &crc);
-	uart_poll_out(uart_dev, HDLC_FRAME);
-}
-
 static void hdlc_process_complete_frame(struct hdlc_driver *drv)
 {
 	int ret;
@@ -176,23 +152,28 @@ static void hdlc_rx_handler(struct k_work *work)
 
 int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t address, uint8_t control)
 {
-	size_t block_size = sizeof(struct hdlc_block) + buffer_len * sizeof(uint8_t);
-	struct hdlc_block *block = k_malloc(block_size);
+	uint16_t crc = 0xffff;
 
-	if (block == NULL) {
-		return -1;
+	uart_poll_out(uart_dev, HDLC_FRAME);
+	uart_poll_out_crc(uart_dev, address, &crc);
+
+	if (control == 0) {
+		uart_poll_out_crc(uart_dev, hdlc_driver.send_seq << 1, &crc);
+	} else {
+		uart_poll_out_crc(uart_dev, control, &crc);
 	}
 
-	block->length = buffer_len;
-	memcpy(block->buffer, buffer, buffer_len);
-	block->address = address;
-	block->control = control;
+	for (int i = 0; i < buffer_len; i++) {
+		uart_poll_out_crc(uart_dev, buffer[i], &crc);
+	}
 
-	block_out(&hdlc_driver, block);
+	uint16_t crc_calc = crc ^ 0xffff;
 
-	k_free(block);
+	uart_poll_out_crc(uart_dev, crc_calc, &crc);
+	uart_poll_out_crc(uart_dev, crc_calc >> 8, &crc);
+	uart_poll_out(uart_dev, HDLC_FRAME);
 
-	return block_size;
+	return 0;
 }
 
 int hdlc_init(hdlc_process_frame_callback cb)

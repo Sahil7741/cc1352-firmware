@@ -53,7 +53,7 @@ int hdlc_init(hdlc_process_frame_callback cb);
  * @param address
  * @param control
  *
- * @return block size (> 0) if successful. Negative in case of error
+ * @return block size (>= 0) if successful. Negative in case of error
  */
 int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t address,
 			 uint8_t control);
