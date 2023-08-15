@@ -151,6 +151,11 @@ fail:
 	return ret;
 }
 
+static void cports_free(int *cports)
+{
+	k_heap_free(&cports_heap, cports);
+}
+
 static int *cports_alloc(size_t len)
 {
 	int *cports;
@@ -171,7 +176,7 @@ static int *cports_alloc(size_t len)
 static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length)
 {
 	if (new_length == 0) {
-		k_heap_free(&cports_heap, original_cports);
+		cports_free(original_cports);
 		return NULL;
 	}
 
@@ -187,7 +192,7 @@ static int *cports_realloc(int *original_cports, size_t original_length, size_t 
 
 	if (cports) {
 		memcpy(cports, original_cports, sizeof(int) * original_length);
-		k_heap_free(&cports_heap, original_cports);
+		cports_free(original_cports);
 	}
 
 	return cports;
@@ -342,12 +347,17 @@ early_exit:
 
 void node_destroy_interface(struct gb_interface *inf)
 {
+	struct node_control_data *ctrl_data;
+
 	if (inf == NULL) {
 		return;
 	}
 
+	ctrl_data = inf->controller.ctrl_data;
+
 	sys_dlist_remove(&inf->node);
-	k_mem_slab_free(&node_control_data_slab, (void **)&inf->controller.ctrl_data);
+	cports_free(ctrl_data->cports);
+	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 	gb_interface_dealloc(inf);
 }
 
