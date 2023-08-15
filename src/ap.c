@@ -79,6 +79,11 @@ int ap_rx_submit(struct gb_message *msg)
 	uint16_t cport_id;
 
 	memcpy(&cport_id, msg->header.pad, sizeof(uint16_t));
+
+	if (cport_id >= AP_MAX_NODES) {
+		return -1;
+	}
+
 	k_fifo_put(&ap_ctrl_data.pending_read[cport_id], msg);
 	return 0;
 }

@@ -69,7 +69,6 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 	int ret;
 	struct gb_operation_msg_hdr hdr;
 	struct gb_message *msg;
-	size_t payload_size;
 
 	ret = read_data(sock, &hdr, sizeof(struct gb_operation_msg_hdr));
 	if (ret != sizeof(struct gb_operation_msg_hdr)) {
@@ -77,8 +76,8 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 		goto early_exit;
 	}
 
-	payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
-	msg = gb_message_alloc(payload_size, hdr.type, hdr.id, hdr.status);
+	msg = gb_message_alloc(hdr.size - sizeof(struct gb_operation_msg_hdr), hdr.type, hdr.id,
+			       hdr.status);
 	if (!msg) {
 		LOG_ERR("Failed to allocate node message");
 		goto early_exit;

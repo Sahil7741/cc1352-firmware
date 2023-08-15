@@ -176,7 +176,7 @@ static void hdlc_rx_handler(struct k_work *work)
 
 int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t address, uint8_t control)
 {
-	size_t block_size = sizeof(struct hdlc_block) + sizeof(uint8_t) * buffer_len;
+	size_t block_size = sizeof(struct hdlc_block) + buffer_len * sizeof(uint8_t);
 	struct hdlc_block *block = k_malloc(block_size);
 
 	if (block == NULL) {

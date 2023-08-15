@@ -5,6 +5,7 @@
 
 #include "ap.h"
 #include "apbridge.h"
+#include "greybus_protocol.h"
 #include "mdns.h"
 #include "hdlc.h"
 #include "mcumgr.h"
@@ -60,27 +61,27 @@ static void serial_callback(const struct device *dev, void *user_data)
 
 static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 {
-	struct gb_operation_msg_hdr hdr;
 	struct gb_message *msg;
-	size_t payload_size;
+	int ret;
+	struct gb_operation_msg_hdr *hdr = (struct gb_operation_msg_hdr *)buffer;
 
-	memcpy(&hdr, buffer, sizeof(struct gb_operation_msg_hdr));
-
-	if (hdr.size > buffer_len) {
+	if (hdr->size > buffer_len) {
 		LOG_ERR("Greybus Message size is greater than received buffer.");
 		return -1;
 	}
 
-	payload_size = hdr.size - sizeof(struct gb_operation_msg_hdr);
-	msg = k_malloc(sizeof(struct gb_message) + payload_size);
-	if (msg == NULL) {
+	msg = gb_message_alloc(hdr->size - sizeof(struct gb_operation_msg_hdr), hdr->type, hdr->id,
+			       hdr->status);
+	if (!msg) {
 		LOG_ERR("Failed to allocate greybus message");
 		return -1;
 	}
-	msg->payload_size = payload_size;
-	memcpy(&msg->header, &hdr, sizeof(struct gb_operation_msg_hdr));
+	memcpy(msg->header.pad, hdr->pad, sizeof(uint16_t));
 	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload_size);
-	ap_rx_submit(msg);
+	ret = ap_rx_submit(msg);
+	if (ret < 0) {
+		LOG_ERR("Failed add message to AP Queue");
+	}
 
 	return 0;
 }
@@ -184,7 +185,8 @@ void main(void)
 			continue;
 		}
 
-		ret = mdns_query_recv(sock, node_array, MAX_GREYBUS_NODES, query, strlen(query), 2000);
+		ret = mdns_query_recv(sock, node_array, MAX_GREYBUS_NODES, query, strlen(query),
+				      2000);
 		if (ret < 0) {
 			LOG_WRN("Failed to get greybus nodes");
 			continue;

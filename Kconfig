@@ -15,6 +15,10 @@ config BEAGLEPLAY_HDLC_MAX_BLOCK_SIZE
 config BEAGLEPLAY_GREYBUS_MCUMGR
   bool "Enable Mcumgr support"
 
+config BEAGLEPLAY_GREYBUS_MESSAGES_HEAP_MEM_POOL_SIZE
+	int "Heap for Greybus messages"
+	default 2048
+
 module = BEAGLEPLAY_GREYBUS
 module-str = beagleplay_greybus
 source "subsys/logging/Kconfig.template.log_config"
