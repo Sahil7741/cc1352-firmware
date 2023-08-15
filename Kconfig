@@ -19,6 +19,10 @@ config BEAGLEPLAY_GREYBUS_MESSAGES_HEAP_MEM_POOL_SIZE
 	int "Heap for Greybus messages"
 	default 2048
 
+config BEAGLEPLAY_GREYBUS_MAX_CPORTS
+	int "Maximum number of Cports supported by SVC"
+	default 32
+
 module = BEAGLEPLAY_GREYBUS
 module-str = beagleplay_greybus
 source "subsys/logging/Kconfig.template.log_config"

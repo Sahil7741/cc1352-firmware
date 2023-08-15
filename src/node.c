@@ -26,6 +26,7 @@ struct node_control_data {
 
 K_MEM_SLAB_DEFINE_STATIC(node_control_data_slab, sizeof(struct node_control_data),
 			 MAX_GREYBUS_NODES, 8);
+K_HEAP_DEFINE(cports_heap, CONFIG_BEAGLEPLAY_GREYBUS_MAX_CPORTS * sizeof(int));
 
 static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
 
@@ -155,7 +156,7 @@ static int *cports_alloc(size_t len)
 	int *cports;
 	size_t i;
 
-	cports = k_malloc(sizeof(int) * len);
+	cports = k_heap_alloc(&cports_heap, len * sizeof(int), K_NO_WAIT);
 	if (!cports) {
 		return NULL;
 	}
@@ -170,7 +171,7 @@ static int *cports_alloc(size_t len)
 static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length)
 {
 	if (new_length == 0) {
-		k_free(original_cports);
+		k_heap_free(&cports_heap, original_cports);
 		return NULL;
 	}
 
@@ -186,7 +187,7 @@ static int *cports_realloc(int *original_cports, size_t original_length, size_t 
 
 	if (cports) {
 		memcpy(cports, original_cports, sizeof(int) * original_length);
-		k_free(original_cports);
+		k_heap_free(&cports_heap, original_cports);
 	}
 
 	return cports;
