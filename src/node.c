@@ -77,15 +77,15 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 		goto early_exit;
 	}
 
-	msg = gb_message_alloc(hdr.size - sizeof(struct gb_operation_msg_hdr), hdr.type, hdr.id,
+	msg = gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.id,
 			       hdr.status);
 	if (!msg) {
 		LOG_ERR("Failed to allocate node message");
 		goto early_exit;
 	}
 
-	ret = read_data(sock, msg->payload, msg->payload_size);
-	if (ret != msg->payload_size) {
+	ret = read_data(sock, msg->payload, gb_message_payload_len(msg));
+	if (ret != gb_message_payload_len(msg)) {
 		*flag = ret == 0;
 		goto free_msg;
 	}
@@ -108,8 +108,8 @@ static int gb_message_send(int sock, const struct gb_message *msg)
 		goto early_exit;
 	}
 
-	ret = write_data(sock, msg->payload, msg->payload_size);
-	if (ret != msg->payload_size) {
+	ret = write_data(sock, msg->payload, gb_message_payload_len(msg));
+	if (ret != gb_message_payload_len(msg)) {
 		LOG_ERR("Failed to send Greybus Message Payload to node");
 		goto early_exit;
 	}

@@ -21,9 +21,30 @@
 struct gb_message {
 	void *fifo_reserved;
 	struct gb_operation_msg_hdr header;
-	size_t payload_size;
 	uint8_t payload[];
 };
+
+/*
+ * Return the paylaod length of a greybus message from message header.
+ *
+ * @param hdr: greybus header
+ *
+ * @return payload length
+ */
+static inline size_t gb_hdr_payload_len(const struct gb_operation_msg_hdr *hdr) {
+	return hdr->size - sizeof(struct gb_operation_msg_hdr);
+}
+
+/*
+ * Return the paylaod length of a greybus message.
+ *
+ * @param msg: Greybus message
+ *
+ * @return payload length
+ */
+static inline size_t gb_message_payload_len(const struct gb_message *msg) {
+	return gb_hdr_payload_len(&msg->header);
+}
 
 /*
  * Check if the greybus message header is a response.

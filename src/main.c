@@ -70,14 +70,14 @@ static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 		return -1;
 	}
 
-	msg = gb_message_alloc(hdr->size - sizeof(struct gb_operation_msg_hdr), hdr->type, hdr->id,
+	msg = gb_message_alloc(gb_hdr_payload_len(hdr), hdr->type, hdr->id,
 			       hdr->status);
 	if (!msg) {
 		LOG_ERR("Failed to allocate greybus message");
 		return -1;
 	}
 	memcpy(msg->header.pad, hdr->pad, sizeof(uint16_t));
-	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload_size);
+	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], gb_message_payload_len(msg));
 	ret = ap_rx_submit(msg);
 	if (ret < 0) {
 		LOG_ERR("Failed add message to AP Queue");
