@@ -29,7 +29,8 @@ struct gb_message *gb_message_alloc(size_t payload_len, uint8_t message_type, ui
 {
 	struct gb_message *msg;
 
-	msg = k_heap_alloc(&greybus_messages_heap, sizeof(struct gb_message) + payload_len, K_NO_WAIT);
+	msg = k_heap_alloc(&greybus_messages_heap, sizeof(struct gb_message) + payload_len,
+			   K_NO_WAIT);
 	if (msg == NULL) {
 		LOG_WRN("Failed to allocate Greybus request message");
 		return NULL;
@@ -55,6 +56,7 @@ struct gb_message *gb_message_request_alloc(const void *payload, size_t payload_
 	uint16_t operation_id = is_oneshot ? 0 : new_operation_id();
 
 	struct gb_message *msg = gb_message_alloc(payload_len, request_type, operation_id, 0);
+
 	memcpy(msg->payload, payload, payload_len);
 	return msg;
 }

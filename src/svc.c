@@ -359,8 +359,7 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 
 	ret = gb_connection_destroy(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (ret < 0) {
-		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
-			"and Cport 2: %u of Interface 2: %u",
+		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u and Cport 2: %u of Interface 2: %u",
 			ret, req->cport1_id, req->intf1_id, req->cport2_id, req->intf2_id);
 		goto fail;
 	}
@@ -516,6 +515,7 @@ int svc_send_module_removed(uint8_t intf_id)
 	struct svc_module_removed_map_item *item;
 
 	struct gb_svc_module_removed_request req = {.primary_intf_id = intf_id};
+
 	ret = control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED_REQUEST);
 	if (ret < 0) {
 		return ret;
@@ -561,6 +561,7 @@ struct gb_interface *svc_interface(void)
 void svc_deinit(void)
 {
 	struct gb_message *msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
+
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
 
 	while (msg) {

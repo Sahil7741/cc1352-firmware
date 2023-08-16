@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 */
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
@@ -22,10 +22,12 @@ static void apbridge_entry(void *p1, void *p2, void *p3)
 
 K_THREAD_DEFINE(apbridge, 2048, apbridge_entry, NULL, NULL, NULL, 6, 0, 0);
 
-void apbridge_start() {
+void apbridge_start(void)
+{
 	k_thread_resume(apbridge);
 }
 
-void apbridge_stop() {
+void apbridge_stop(void)
+{
 	k_thread_suspend(apbridge);
 }

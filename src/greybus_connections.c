@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 */
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
@@ -133,7 +133,7 @@ cleanup:
 	return 0;
 }
 
-void gb_connection_process_all()
+void gb_connection_process_all(void)
 {
 	struct gb_connection *conn;
 

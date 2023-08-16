@@ -20,23 +20,7 @@
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
-typedef void (*greybus_message_callback)(struct gb_message *);
 typedef int (*hdlc_process_frame_callback)(const void *, size_t, uint8_t);
-
-/*
- * HDLC block
- *
- * @param HDLC address
- * @param HDLC control
- * @param hdlc block buffer length
- * @param hdlc block buffer
- */
-struct hdlc_block {
-	uint8_t address;
-	uint8_t control;
-	uint8_t length;
-	uint8_t buffer[];
-};
 
 /*
  * Initialize internal HDLC stuff
