@@ -30,7 +30,6 @@ static void hdlc_rx_handler(struct k_work *);
 K_THREAD_STACK_DEFINE(hdlc_rx_worqueue_stack, HDLC_RX_WORKQUEUE_STACK_SIZE);
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
-/* TODO: Probably switch to a higher priority thread than apbridge */
 K_WORK_DEFINE(hdlc_rx_work, hdlc_rx_handler);
 RING_BUF_DECLARE(hdlc_rx_ringbuf, HDLC_RX_BUF_SIZE);
 

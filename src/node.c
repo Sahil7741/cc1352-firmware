@@ -77,8 +77,7 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 		goto early_exit;
 	}
 
-	msg = gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.id,
-			       hdr.status);
+	msg = gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.id, hdr.status);
 	if (!msg) {
 		LOG_ERR("Failed to allocate node message");
 		goto early_exit;
@@ -379,13 +378,50 @@ struct active_node {
 	uint8_t intf_id;
 };
 
+static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
+{
+	return memcmp(a->s6_addr, b->s6_addr, sizeof(struct in6_addr));
+}
+
+static int node_cmp_func(const void *a, const void *b)
+{
+	const struct active_node *a_node = a;
+	const struct active_node *b_node = b;
+
+	return ipaddr_cmp(&a_node->addr, &b_node->addr);
+}
+
+static int binary_search(const struct active_node *nodes, const struct in6_addr *addr,
+			 size_t nodes_len)
+{
+	int mid, ret;
+	int low = 0;
+	int high = nodes_len;
+	// Repeat until the pointers low and high meet each other
+	while (low <= high) {
+		mid = low + (high - low) / 2;
+
+		ret = ipaddr_cmp(&nodes[mid].addr, addr);
+
+		if (!ret) {
+			return mid;
+		} else if (ret < 0) {
+			low = mid + 1;
+		} else {
+			high = mid - 1;
+		}
+	}
+
+	return -1;
+}
+
 void node_filter(struct in6_addr *active_addr, size_t active_len)
 {
 	struct active_node inactive_nodes[MAX_GREYBUS_NODES];
-	size_t pos = 0, i, j;
+	size_t pos = 0, i;
 	struct gb_interface *inf;
 	struct node_control_data *ctrl_data;
-	bool flag;
+	int ret;
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&node_interface_list, inf, node) {
 		ctrl_data = inf->controller.ctrl_data;
@@ -394,24 +430,21 @@ void node_filter(struct in6_addr *active_addr, size_t active_len)
 		pos++;
 	}
 
-	for (i = 0; i < active_len; ++i) {
-		flag = false;
+	qsort(inactive_nodes, pos, sizeof(struct active_node), node_cmp_func);
 
-		for (j = 0; j < pos; ++j) {
-			if (net_ipv6_addr_cmp(&inactive_nodes[j].addr, &active_addr[i])) {
-				if (j != pos) {
-					memcpy(&inactive_nodes[j], &inactive_nodes[pos],
-					       sizeof(struct active_node));
-				}
-				pos--;
-				flag = true;
-			}
-		}
+	for (i = 0; i < active_len; ++i) {
+		ret = binary_search(inactive_nodes, &active_addr[i], pos);
 
 		/* Handle New Node */
-		if (!flag) {
+		if (ret < 0) {
 			inf = node_create_interface(&active_addr[i]);
 			svc_send_module_inserted(inf->id);
+		} else {
+			if (ret != pos) {
+				memcpy(&inactive_nodes[ret], &inactive_nodes[pos],
+				       sizeof(struct active_node));
+			}
+			pos--;
 		}
 	}
 
