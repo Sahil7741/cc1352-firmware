@@ -29,6 +29,73 @@ K_MEM_SLAB_DEFINE_STATIC(node_control_data_slab, sizeof(struct node_control_data
 K_HEAP_DEFINE(cports_heap, CONFIG_BEAGLEPLAY_GREYBUS_MAX_CPORTS * sizeof(int));
 
 static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
+static struct in6_addr node_addr_cache[MAX_GREYBUS_NODES];
+static size_t node_addr_cache_pos = 0;
+
+static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
+{
+	return memcmp(a->s6_addr, b->s6_addr, sizeof(struct in6_addr));
+}
+
+static int node_addr_cache_search(const struct in6_addr *addr)
+{
+	int mid, ret;
+	int low = 0;
+	int high = node_addr_cache_pos - 1;
+	// Repeat until the pointers low and high meet each other
+	while (low <= high) {
+		mid = low + (high - low) / 2;
+
+		ret = ipaddr_cmp(&node_addr_cache[mid], addr);
+
+		if (!ret) {
+			return mid;
+		} else if (ret < 0) {
+			low = mid + 1;
+		} else {
+			high = mid - 1;
+		}
+	}
+
+	return -1;
+}
+
+static void node_addr_cache_insert_at(const struct in6_addr *addr, size_t pos)
+{
+	memmove(&node_addr_cache[pos + 1], &node_addr_cache[pos],
+		(node_addr_cache_pos - pos) * sizeof(struct in6_addr));
+	net_ipaddr_copy(&node_addr_cache[pos], addr);
+	node_addr_cache_pos++;
+}
+
+static size_t node_addr_cache_insert(const struct in6_addr *addr)
+{
+	size_t i;
+
+	for (i = 0; i < node_addr_cache_pos && ipaddr_cmp(&node_addr_cache[i], addr) <= 0; ++i) {
+	}
+
+	node_addr_cache_insert_at(addr, i);
+	return i;
+}
+
+static void node_addr_cache_remove_at(size_t pos)
+{
+	memmove(&node_addr_cache[pos], &node_addr_cache[pos + 1],
+		(node_addr_cache_pos - pos - 1) * sizeof(struct in6_addr));
+	node_addr_cache_pos--;
+}
+
+static size_t node_addr_cache_remove(const struct in6_addr *addr)
+{
+	size_t i;
+
+	for (i = 0; i < node_addr_cache_pos && ipaddr_cmp(&node_addr_cache[i], addr) <= 0; ++i) {
+	}
+
+	node_addr_cache_remove_at(i);
+	return i;
+}
 
 static int write_data(int sock, const void *data, size_t len)
 {
@@ -324,7 +391,8 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 
 	ctrl_data->cports = NULL;
 	ctrl_data->cports_len = 0;
-	memcpy(&ctrl_data->addr, addr, sizeof(struct in6_addr));
+	net_ipaddr_copy(&ctrl_data->addr, addr);
+	ret = node_addr_cache_insert(addr);
 
 	struct gb_interface *inf =
 		gb_interface_alloc(node_inf_read, node_inf_write, node_intf_create_connection,
@@ -339,6 +407,7 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 	return inf;
 
 free_ctrl_data:
+	node_addr_cache_remove_at(ret);
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 early_exit:
 	return NULL;
@@ -355,6 +424,7 @@ void node_destroy_interface(struct gb_interface *inf)
 	ctrl_data = inf->controller.ctrl_data;
 
 	sys_dlist_remove(&inf->node);
+	node_addr_cache_remove(&ctrl_data->addr);
 	cports_free(ctrl_data->cports);
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 	gb_interface_dealloc(inf);
@@ -373,84 +443,20 @@ struct gb_interface *node_find_by_id(uint8_t id)
 	return NULL;
 }
 
-struct active_node {
-	struct in6_addr addr;
-	uint8_t intf_id;
-};
-
-static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
-{
-	return memcmp(a->s6_addr, b->s6_addr, sizeof(struct in6_addr));
-}
-
-static int node_cmp_func(const void *a, const void *b)
-{
-	const struct active_node *a_node = a;
-	const struct active_node *b_node = b;
-
-	return ipaddr_cmp(&a_node->addr, &b_node->addr);
-}
-
-static int binary_search(const struct active_node *nodes, const struct in6_addr *addr,
-			 size_t nodes_len)
-{
-	int mid, ret;
-	int low = 0;
-	int high = nodes_len;
-	// Repeat until the pointers low and high meet each other
-	while (low <= high) {
-		mid = low + (high - low) / 2;
-
-		ret = ipaddr_cmp(&nodes[mid].addr, addr);
-
-		if (!ret) {
-			return mid;
-		} else if (ret < 0) {
-			low = mid + 1;
-		} else {
-			high = mid - 1;
-		}
-	}
-
-	return -1;
-}
-
 void node_filter(struct in6_addr *active_addr, size_t active_len)
 {
-	struct active_node inactive_nodes[MAX_GREYBUS_NODES];
-	size_t pos = 0, i;
+	size_t i;
 	struct gb_interface *inf;
-	struct node_control_data *ctrl_data;
 	int ret;
 
-	SYS_DLIST_FOR_EACH_CONTAINER(&node_interface_list, inf, node) {
-		ctrl_data = inf->controller.ctrl_data;
-		net_ipaddr_copy(&inactive_nodes[pos].addr, &ctrl_data->addr);
-		inactive_nodes[pos].intf_id = inf->id;
-		pos++;
-	}
-
-	qsort(inactive_nodes, pos, sizeof(struct active_node), node_cmp_func);
-
 	for (i = 0; i < active_len; ++i) {
-		ret = binary_search(inactive_nodes, &active_addr[i], pos);
+		ret = node_addr_cache_search(&active_addr[i]);
 
 		/* Handle New Node */
 		if (ret < 0) {
 			inf = node_create_interface(&active_addr[i]);
 			svc_send_module_inserted(inf->id);
-		} else {
-			if (ret != pos) {
-				memcpy(&inactive_nodes[ret], &inactive_nodes[pos],
-				       sizeof(struct active_node));
-			}
-			pos--;
 		}
-	}
-
-	/* Handle Removed Modules */
-	for (i = 0; i < pos; ++i) {
-		svc_send_module_removed(inactive_nodes[i].intf_id);
 	}
 }
 
