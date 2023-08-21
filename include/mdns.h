@@ -13,6 +13,8 @@ static const struct in6_addr mdns_addr = {
 
 int mdns_socket_open_ipv6(const struct in6_addr *saddr);
 
+void mdns_socket_close(int sock);
+
 int mdns_query_send(int sock, const char *name, size_t length);
 
 size_t mdns_query_recv(int sock, struct in6_addr *addr_list, size_t addr_list_len,

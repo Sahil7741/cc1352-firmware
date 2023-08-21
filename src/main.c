@@ -12,6 +12,7 @@
 #include "node.h"
 #include "svc.h"
 #include "greybus_connections.h"
+#include "tcp_discovery.h"
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
@@ -19,8 +20,6 @@
 #include <zephyr/net/net_ip.h>
 
 #define UART_DEVICE_NODE        DT_CHOSEN(zephyr_shell_uart)
-#define NODE_DISCOVERY_INTERVAL 5000
-#define MAX_GREYBUS_NODES       CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define CONTROL_SVC_START       0x01
 #define CONTROL_SVC_STOP        0x02
 
@@ -107,9 +106,11 @@ static int control_process_frame(const char *buffer, size_t buffer_len)
 		conn = gb_connection_create(ap, svc, 0, 0);
 		svc_send_version();
 		apbridge_start();
+		tcp_discovery_start();
 		return 0;
 	case CONTROL_SVC_STOP:
 		LOG_INF("Stopping SVC");
+		tcp_discovery_stop();
 		gb_connection_destroy_all();
 		node_destroy_all();
 		svc_deinit();
@@ -140,11 +141,10 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 
 void main(void)
 {
-	int ret, sock;
-	struct in6_addr node_array[MAX_GREYBUS_NODES];
-	char query[] = "_greybus._tcp.local\0";
+	int ret;
 
 	LOG_INF("Starting BeaglePlay Greybus");
+	tcp_discovery_stop();
 	apbridge_stop();
 
 	if (!device_is_ready(uart_dev)) {
@@ -169,29 +169,5 @@ void main(void)
 
 	uart_irq_rx_enable(uart_dev);
 
-	sock = mdns_socket_open_ipv6(&mdns_addr);
-
-	while (1) {
-		k_msleep(NODE_DISCOVERY_INTERVAL);
-
-		if (!svc_is_ready()) {
-			LOG_WRN("SVC Not Ready");
-			continue;
-		}
-
-		ret = mdns_query_send(sock, query, strlen(query));
-		if (ret < 0) {
-			LOG_WRN("Failed to get greybus nodes");
-			continue;
-		}
-
-		ret = mdns_query_recv(sock, node_array, MAX_GREYBUS_NODES, query, strlen(query),
-				      2000);
-		if (ret < 0) {
-			LOG_WRN("Failed to get greybus nodes");
-			continue;
-		}
-
-		node_filter(node_array, ret);
-	}
+	k_sleep(K_FOREVER);
 }

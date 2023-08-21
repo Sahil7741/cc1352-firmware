@@ -84,11 +84,6 @@ struct mdns_string_table_t {
 	size_t next;
 };
 
-static void mdns_socket_close(int sock)
-{
-	zsock_close(sock);
-}
-
 static bool join_multicast_group(const struct in6_addr *mcast_addr)
 {
 	struct net_if_mcast_addr *mcast;
@@ -656,4 +651,9 @@ int mdns_query_send(int sock, const char *name, size_t length)
 	query.name = name;
 	query.length = length;
 	return mdns_multiquery_send(sock, &query, 1, buffer, sizeof(buffer), 0);
+}
+
+void mdns_socket_close(int sock)
+{
+	zsock_close(sock);
 }

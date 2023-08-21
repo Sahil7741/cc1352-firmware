@@ -9,6 +9,7 @@ target_sources(app PRIVATE apbridge.c)
 target_sources(app PRIVATE greybus_connections.c)
 target_sources(app PRIVATE greybus_messages.c)
 target_sources(app PRIVATE greybus_interfaces.c)
+target_sources(app PRIVATE tcp_discovery.c)
 
 if (CONFIG_BEAGLEPLAY_GREYBUS_MCUMGR)
   target_sources(app PRIVATE mcumgr.c)
