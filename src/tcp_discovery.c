@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
+ */
+
 #include "tcp_discovery.h"
 #include "node.h"
 #include "mdns.h"

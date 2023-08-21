@@ -30,7 +30,7 @@ K_HEAP_DEFINE(cports_heap, CONFIG_BEAGLEPLAY_GREYBUS_MAX_CPORTS * sizeof(int));
 
 static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
 static struct in6_addr node_addr_cache[MAX_GREYBUS_NODES];
-static size_t node_addr_cache_pos = 0;
+static size_t node_addr_cache_pos;
 
 static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
 {
