@@ -25,6 +25,18 @@
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
+static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+
+static int hdlc_send_callback(const uint8_t *buffer, size_t buffer_len) {
+	size_t i;
+
+	for (i = 0; i < buffer_len; ++i) {
+		uart_poll_out(uart_dev, buffer[i]);
+	}
+
+	return i;
+}
+
 static void serial_callback(const struct device *dev, void *user_data)
 {
 	ARG_UNUSED(user_data);
@@ -153,7 +165,7 @@ void main(void)
 	}
 
 	mcumgr_init();
-	hdlc_init(hdlc_process_complete_frame);
+	hdlc_init(hdlc_process_complete_frame, hdlc_send_callback);
 
 	ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);
 	if (ret < 0) {

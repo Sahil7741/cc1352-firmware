@@ -17,17 +17,15 @@
 #define ADDRESS_MCUMGR  0x03
 #define ADDRESS_CONTROL 0x04
 
-#define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
-static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
-
 typedef int (*hdlc_process_frame_callback)(const void *, size_t, uint8_t);
+typedef int (*hdlc_send_frame_callback)(const uint8_t *, size_t);
 
 /*
  * Initialize internal HDLC stuff
  *
  * @return 0 if successful. Negative in case of error.
  */
-int hdlc_init(hdlc_process_frame_callback cb);
+int hdlc_init(hdlc_process_frame_callback process_cb, hdlc_send_frame_callback send_cb);
 
 /*
  * Submit an HDLC Block synchronously

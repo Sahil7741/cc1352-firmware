@@ -8,6 +8,9 @@
 #include <zephyr/logging/log_backend.h>
 #include <zephyr/logging/log_backend_std.h>
 
+#define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
+
+static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 static uint8_t hdlc_uart_buffer[256];
 
 static int hdlc_uart_out(uint8_t *data, size_t length, void *ctx)

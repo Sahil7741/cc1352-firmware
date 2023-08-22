@@ -37,6 +37,7 @@ static struct k_work_q hdlc_rx_workqueue;
 
 struct hdlc_driver {
 	hdlc_process_frame_callback process_callback_frame_cb;
+	hdlc_send_frame_callback send_frame_cb;
 
 	uint16_t crc;
 	bool next_escaped;
@@ -44,16 +45,21 @@ struct hdlc_driver {
 	uint8_t send_seq;
 	uint16_t rx_buffer_len;
 	uint8_t rx_buffer[HDLC_MAX_BLOCK_SIZE];
-} hdlc_driver;
+};
 
-static void uart_poll_out_crc(const struct device *dev, uint8_t byte, uint16_t *crc)
+static struct hdlc_driver hdlc_driver;
+
+static void uart_poll_out_crc(uint8_t byte, uint16_t *crc)
 {
+	uint8_t temp;
+
 	*crc = crc16_ccitt(*crc, &byte, 1);
 	if (byte == HDLC_FRAME || byte == HDLC_ESC) {
-		uart_poll_out(dev, HDLC_ESC);
+		temp = HDLC_ESC;
+		hdlc_driver.send_frame_cb(&temp, 1);
 		byte ^= 0x20;
 	}
-	uart_poll_out(dev, byte);
+	hdlc_driver.send_frame_cb(&byte, 1);
 }
 
 static void hdlc_process_complete_frame(struct hdlc_driver *drv)
@@ -151,31 +157,32 @@ static void hdlc_rx_handler(struct k_work *work)
 
 int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t address, uint8_t control)
 {
+	uint8_t temp = HDLC_FRAME;
 	uint16_t crc = 0xffff;
 
-	uart_poll_out(uart_dev, HDLC_FRAME);
-	uart_poll_out_crc(uart_dev, address, &crc);
+	hdlc_driver.send_frame_cb(&temp, 1);
+	uart_poll_out_crc(address, &crc);
 
 	if (control == 0) {
-		uart_poll_out_crc(uart_dev, hdlc_driver.send_seq << 1, &crc);
+		uart_poll_out_crc(hdlc_driver.send_seq << 1, &crc);
 	} else {
-		uart_poll_out_crc(uart_dev, control, &crc);
+		uart_poll_out_crc(control, &crc);
 	}
 
 	for (int i = 0; i < buffer_len; i++) {
-		uart_poll_out_crc(uart_dev, buffer[i], &crc);
+		uart_poll_out_crc(buffer[i], &crc);
 	}
 
 	uint16_t crc_calc = crc ^ 0xffff;
 
-	uart_poll_out_crc(uart_dev, crc_calc, &crc);
-	uart_poll_out_crc(uart_dev, crc_calc >> 8, &crc);
-	uart_poll_out(uart_dev, HDLC_FRAME);
+	uart_poll_out_crc(crc_calc, &crc);
+	uart_poll_out_crc(crc_calc >> 8, &crc);
+	hdlc_driver.send_frame_cb(&temp, 1);
 
 	return 0;
 }
 
-int hdlc_init(hdlc_process_frame_callback cb)
+int hdlc_init(hdlc_process_frame_callback process_cb, hdlc_send_frame_callback send_cb)
 {
 	hdlc_driver.crc = 0xffff;
 	hdlc_driver.send_seq = 0;
@@ -183,7 +190,8 @@ int hdlc_init(hdlc_process_frame_callback cb)
 	hdlc_driver.next_escaped = false;
 	hdlc_driver.rx_buffer_len = 0;
 
-	hdlc_driver.process_callback_frame_cb = cb;
+	hdlc_driver.process_callback_frame_cb = process_cb;
+	hdlc_driver.send_frame_cb = send_cb;
 
 	k_work_queue_init(&hdlc_rx_workqueue);
 	k_work_queue_start(&hdlc_rx_workqueue, hdlc_rx_worqueue_stack, HDLC_RX_WORKQUEUE_STACK_SIZE,
