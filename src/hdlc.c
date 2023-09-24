@@ -79,9 +79,7 @@ static void hdlc_process_complete_frame(struct hdlc_driver *drv)
 
 static void hdlc_process_frame(struct hdlc_driver *drv)
 {
-	if (drv->rx_buffer[0] == 0xEE) {
-		LOG_HEXDUMP_ERR(drv->rx_buffer, 8, "HDLC ERROR");
-	} else if (drv->rx_buffer_len > 3 && drv->crc == 0xf0b8) {
+	if (drv->rx_buffer_len > 3 && drv->crc == 0xf0b8) {
 		uint8_t ctrl = drv->rx_buffer[1];
 
 		if ((ctrl & 1) == 0) {
@@ -112,13 +110,16 @@ static int hdlc_save_byte(struct hdlc_driver *drv, uint8_t byte)
 
 static void hdlc_rx_input_byte(struct hdlc_driver *drv, uint8_t byte)
 {
-	if (byte == HDLC_FRAME) {
+	switch (byte) {
+	case HDLC_FRAME:
 		if (drv->rx_buffer_len) {
 			hdlc_process_frame(drv);
 		}
-	} else if (byte == HDLC_ESC) {
+		break;
+	case HDLC_ESC:
 		drv->next_escaped = true;
-	} else {
+		break;
+	default:
 		if (drv->next_escaped) {
 			byte ^= 0x20;
 			drv->next_escaped = false;

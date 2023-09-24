@@ -9,9 +9,10 @@
 #include <zephyr/logging/log_backend_std.h>
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
+#define BUFFER_LEN       256
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
-static uint8_t hdlc_uart_buffer[256];
+static uint8_t hdlc_uart_buffer[BUFFER_LEN];
 
 static int hdlc_uart_out(uint8_t *data, size_t length, void *ctx)
 {
@@ -21,7 +22,7 @@ static int hdlc_uart_out(uint8_t *data, size_t length, void *ctx)
 	return length;
 }
 
-LOG_OUTPUT_DEFINE(hdlc_uart_output, hdlc_uart_out, hdlc_uart_buffer, 256);
+LOG_OUTPUT_DEFINE(hdlc_uart_output, hdlc_uart_out, hdlc_uart_buffer, BUFFER_LEN);
 
 static void hdlc_uart_backend_process(const struct log_backend *const backend,
 				      union log_msg_generic *msg)

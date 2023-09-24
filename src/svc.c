@@ -43,6 +43,12 @@ static struct svc_control_data svc_ctrl_data;
 
 static struct gb_message *svc_inf_read(struct gb_controller *, uint16_t);
 static int svc_inf_write(struct gb_controller *, struct gb_message *, uint16_t);
+
+static bool svc_is_ready(void)
+{
+	return atomic_test_bit(svc_is_read_flag, 0);
+}
+
 static int svc_inf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	ARG_UNUSED(ctrl);
@@ -359,7 +365,8 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 
 	ret = gb_connection_destroy(intf_1, intf_2, req->cport1_id, req->cport2_id);
 	if (ret < 0) {
-		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u and Cport 2: %u of Interface 2: %u",
+		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
+			"and Cport 2: %u of Interface 2: %u",
 			ret, req->cport1_id, req->intf1_id, req->cport2_id, req->intf2_id);
 		goto fail;
 	}
@@ -542,11 +549,6 @@ struct gb_interface *svc_init(void)
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
 	k_fifo_init(&svc_ctrl_data.pending_read);
 	return &intf;
-}
-
-bool svc_is_ready(void)
-{
-	return atomic_test_bit(svc_is_read_flag, 0);
 }
 
 struct gb_interface *svc_interface(void)

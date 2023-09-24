@@ -18,12 +18,6 @@
 struct gb_interface *svc_init(void);
 
 /*
- * Check if SVC is ready. This mostly means if SVC Hello was successfully
- * executed.
- */
-bool svc_is_ready(void);
-
-/*
  * Create SVC_TYPE_VERSION greybus message and queue it for sending.
  *
  * @return 0 if successful, else error.

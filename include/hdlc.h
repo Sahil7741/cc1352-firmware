@@ -14,10 +14,28 @@
 
 #define ADDRESS_GREYBUS 0x01
 #define ADDRESS_DBG     0x02
-#define ADDRESS_MCUMGR  0x03
-#define ADDRESS_CONTROL 0x04
+#define ADDRESS_CONTROL 0x03
+#define ADDRESS_MCUMGR  0x04
 
+/*
+ * Calback to process a received HDLC frame
+ *
+ * @param payload
+ * @param payload len
+ * @param HDLC address
+ *
+ * @return Negative in case of error
+ */
 typedef int (*hdlc_process_frame_callback)(const void *, size_t, uint8_t);
+
+/*
+ * Callback to send HDLC data
+ *
+ * @param buffer
+ * @param buffer length
+ *
+ * @return Number of bytes sent, negative in case of error
+ */
 typedef int (*hdlc_send_frame_callback)(const uint8_t *, size_t);
 
 /*
