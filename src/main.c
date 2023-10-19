@@ -8,7 +8,6 @@
 #include "greybus_protocol.h"
 #include "mdns.h"
 #include "hdlc.h"
-#include "mcumgr.h"
 #include "node.h"
 #include "svc.h"
 #include "greybus_connections.h"
@@ -139,8 +138,6 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 	switch (address) {
 	case ADDRESS_GREYBUS:
 		return hdlc_process_greybus_frame(buffer, len);
-	case ADDRESS_MCUMGR:
-		return mcumgr_process_frame(buffer, len);
 	case ADDRESS_CONTROL:
 		return control_process_frame(buffer, len);
 	case ADDRESS_DBG:
@@ -164,7 +161,6 @@ void main(void)
 		return;
 	}
 
-	mcumgr_init();
 	hdlc_init(hdlc_process_complete_frame, hdlc_send_callback);
 
 	ret = uart_irq_callback_user_data_set(uart_dev, serial_callback, NULL);

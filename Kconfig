@@ -12,9 +12,6 @@ config BEAGLEPLAY_HDLC_MAX_BLOCK_SIZE
   int "Maximum hdlc block size supported"
   default 140
 
-config BEAGLEPLAY_GREYBUS_MCUMGR
-  bool "Enable Mcumgr support"
-
 config BEAGLEPLAY_GREYBUS_MESSAGES_HEAP_MEM_POOL_SIZE
 	int "Heap for Greybus messages"
 	default 2048
