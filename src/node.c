@@ -82,8 +82,7 @@ static size_t node_addr_cache_remove(const struct in6_addr *addr)
 
 static int write_data(int sock, const void *data, size_t len)
 {
-	int ret;
-	int transmitted = 0;
+	int ret, transmitted = 0;
 
 	while (transmitted < len) {
 		ret = zsock_send(sock, transmitted + (char *)data, len - transmitted, 0);
@@ -98,8 +97,7 @@ static int write_data(int sock, const void *data, size_t len)
 
 static int read_data(int sock, void *data, size_t len)
 {
-	int ret;
-	int received = 0;
+	int ret, received = 0;
 
 	while (received < len) {
 		ret = zsock_recv(sock, received + (char *)data, len - received, 0);
@@ -224,6 +222,8 @@ static int *cports_alloc(size_t len)
 
 static int *cports_realloc(int *original_cports, size_t original_length, size_t new_length)
 {
+	int *cports;
+
 	if (new_length == 0) {
 		cports_free(original_cports);
 		return NULL;
@@ -237,8 +237,7 @@ static int *cports_realloc(int *original_cports, size_t original_length, size_t 
 		return original_cports;
 	}
 
-	int *cports = cports_alloc(new_length);
-
+	cports = cports_alloc(new_length);
 	if (cports) {
 		memcpy(cports, original_cports, sizeof(int) * original_length);
 		cports_free(original_cports);
@@ -365,6 +364,7 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 {
 	int ret;
 	struct node_control_data *ctrl_data;
+	struct gb_interface *inf;
 
 	ret = k_mem_slab_alloc(&node_control_data_slab, (void **)&ctrl_data, K_NO_WAIT);
 	if (ret) {
@@ -376,12 +376,15 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 	ctrl_data->cports_len = 0;
 	net_ipaddr_copy(&ctrl_data->addr, addr);
 	ret = node_addr_cache_insert(addr);
-
-	struct gb_interface *inf =
-		gb_interface_alloc(node_inf_read, node_inf_write, node_intf_create_connection,
-				   node_intf_destroy_connection, ctrl_data);
-	if (inf == NULL) {
+	if (ret) {
+		LOG_ERR("Failed to create new node");
 		goto free_ctrl_data;
+	}
+
+	inf = gb_interface_alloc(node_inf_read, node_inf_write, node_intf_create_connection,
+				 node_intf_destroy_connection, ctrl_data);
+	if (!inf) {
+		goto remove_node;
 	}
 
 	LOG_DBG("Create new interface with ID %u", inf->id);
@@ -389,8 +392,9 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 
 	return inf;
 
-free_ctrl_data:
+remove_node:
 	node_addr_cache_remove_at(ret);
+free_ctrl_data:
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 early_exit:
 	return NULL;
