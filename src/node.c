@@ -39,44 +39,27 @@ static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
 
 static int node_addr_cache_search(const struct in6_addr *addr)
 {
-	int mid, ret;
-	int low = 0;
-	int high = node_addr_cache_pos - 1;
-	// Repeat until the pointers low and high meet each other
-	while (low <= high) {
-		mid = low + (high - low) / 2;
+	size_t i;
+	int ret;
 
-		ret = ipaddr_cmp(&node_addr_cache[mid], addr);
-
+	for (i = 0; i < node_addr_cache_pos; ++i) {
+		ret = ipaddr_cmp(&node_addr_cache[i], addr);
 		if (!ret) {
-			return mid;
-		} else if (ret < 0) {
-			low = mid + 1;
-		} else {
-			high = mid - 1;
+			return i;
 		}
 	}
 
 	return -1;
 }
 
-static void node_addr_cache_insert_at(const struct in6_addr *addr, size_t pos)
+static int node_addr_cache_insert(const struct in6_addr *addr)
 {
-	memmove(&node_addr_cache[pos + 1], &node_addr_cache[pos],
-		(node_addr_cache_pos - pos) * sizeof(struct in6_addr));
-	net_ipaddr_copy(&node_addr_cache[pos], addr);
-	node_addr_cache_pos++;
-}
-
-static size_t node_addr_cache_insert(const struct in6_addr *addr)
-{
-	size_t i;
-
-	for (i = 0; i < node_addr_cache_pos && ipaddr_cmp(&node_addr_cache[i], addr) <= 0; ++i) {
+	if (node_addr_cache_pos >= MAX_GREYBUS_NODES) {
+		return -ENOMEM;
 	}
 
-	node_addr_cache_insert_at(addr, i);
-	return i;
+	net_ipaddr_copy(&node_addr_cache[node_addr_cache_pos++], addr);
+	return 0;
 }
 
 static void node_addr_cache_remove_at(size_t pos)
