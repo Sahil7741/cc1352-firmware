@@ -31,7 +31,8 @@ struct gb_message {
  *
  * @return payload length
  */
-static inline size_t gb_hdr_payload_len(const struct gb_operation_msg_hdr *hdr) {
+static inline size_t gb_hdr_payload_len(const struct gb_operation_msg_hdr *hdr)
+{
 	return hdr->size - sizeof(struct gb_operation_msg_hdr);
 }
 
@@ -42,7 +43,8 @@ static inline size_t gb_hdr_payload_len(const struct gb_operation_msg_hdr *hdr) 
  *
  * @return payload length
  */
-static inline size_t gb_message_payload_len(const struct gb_message *msg) {
+static inline size_t gb_message_payload_len(const struct gb_message *msg)
+{
 	return gb_hdr_payload_len(&msg->header);
 }
 
@@ -146,6 +148,33 @@ static inline struct gb_message *gb_message_response_alloc(const void *payload, 
 		gb_message_alloc(payload_len, OP_RESPONSE | request_type, operation_id, status);
 	memcpy(msg->payload, payload, payload_len);
 	return msg;
+}
+
+/*
+ * Get the greybus message padding as u16. This is useful when cport information is stored in pad
+ * bytes
+ *
+ * @param greybus message
+ *
+ * @return greybus message pad
+ */
+static inline uint16_t gb_message_pad_read(const struct gb_message *msg)
+{
+	uint16_t pad;
+	memcpy(&pad, msg->header.pad, sizeof(pad));
+	return pad;
+}
+
+/*
+ * Write u16 to greybus message header padding. This is useful when cport information is stored in
+ * pad bytes.
+ *
+ * @param greybus message
+ * @param u16 to write to pad
+ */
+static inline void gb_message_pad_write(struct gb_message *msg, uint16_t pad)
+{
+	memcpy(msg->header.pad, &pad, sizeof(pad));
 }
 
 #endif
