@@ -65,9 +65,10 @@ static int node_addr_cache_insert(const struct in6_addr *addr)
 
 static void node_addr_cache_remove_at(size_t pos)
 {
-	memmove(&node_addr_cache[pos], &node_addr_cache[pos + 1],
-		(node_addr_cache_pos - pos - 1) * sizeof(struct in6_addr));
-	node_addr_cache_pos--;
+	--node_addr_cache_pos;
+	if (pos != node_addr_cache_pos) {
+		net_ipaddr_copy(&node_addr_cache[pos], &node_addr_cache[node_addr_cache_pos]);
+	}
 }
 
 static size_t node_addr_cache_remove(const struct in6_addr *addr)
