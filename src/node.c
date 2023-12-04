@@ -20,18 +20,52 @@ LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct node_control_data {
 	struct in6_addr addr;
-	struct k_fifo *cports_queue;
 	int sock;
-	uint16_t cports_len;
+	sys_dlist_t msgs;
 };
 
 K_MEM_SLAB_DEFINE_STATIC(node_control_data_slab, sizeof(struct node_control_data),
 			 MAX_GREYBUS_NODES, 8);
-K_HEAP_DEFINE(cports_heap, CONFIG_BEAGLEPLAY_GREYBUS_MAX_CPORTS * sizeof(struct k_fifo));
 
 static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
 static struct in6_addr node_addr_cache[MAX_GREYBUS_NODES];
 static size_t node_addr_cache_pos;
+
+static void msgs_drain_all(sys_dlist_t *list)
+{
+	struct gb_message *msg, *msg_safe;
+
+	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(list, msg, msg_safe, node) {
+		sys_dlist_remove(&msg->node);
+		gb_message_dealloc(msg);
+	}
+}
+
+static void msgs_drain_by_cport(sys_dlist_t *list, uint16_t cport_id)
+{
+	struct gb_message *msg, *msg_safe;
+
+	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(list, msg, msg_safe, node) {
+		if (gb_message_pad_read(msg) == cport_id) {
+			sys_dlist_remove(&msg->node);
+			gb_message_dealloc(msg);
+		}
+	}
+}
+
+static struct gb_message *msgs_find(sys_dlist_t *list, uint16_t cport_id)
+{
+	struct gb_message *msg, *msg_safe;
+
+	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(list, msg, msg_safe, node) {
+		if (gb_message_pad_read(msg) == cport_id) {
+			sys_dlist_remove(&msg->node);
+			return msg;
+		}
+	}
+
+	return NULL;
+}
 
 static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
 {
@@ -133,6 +167,7 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 		goto early_exit;
 	}
 
+	memcpy(msg->header.pad, hdr.pad, sizeof(uint16_t));
 	ret = read_data(sock, msg->payload, gb_message_payload_len(msg));
 	if (ret != gb_message_payload_len(msg)) {
 		*flag = ret == 0;
@@ -200,99 +235,31 @@ fail:
 	return ret;
 }
 
-static void cports_free(struct k_fifo *cports)
-{
-	k_heap_free(&cports_heap, cports);
-}
-
-static struct k_fifo *cports_alloc(size_t len)
-{
-	return k_heap_alloc(&cports_heap, len * sizeof(struct k_fifo), K_NO_WAIT);
-}
-
-static struct k_fifo *cports_realloc(struct k_fifo *original_cports, size_t original_length,
-				     size_t new_length)
-{
-	struct k_fifo *cports;
-	size_t i;
-
-	if (new_length == 0) {
-		cports_free(original_cports);
-		return NULL;
-	}
-
-	if (!original_cports) {
-		cports = cports_alloc(new_length);
-		/* Init cports */
-		for (i = 0; i < new_length; ++i) {
-			k_fifo_init(&cports[i]);
-		}
-		return cports;
-	}
-
-	if (new_length <= original_length) {
-		return original_cports;
-	}
-
-	cports = cports_alloc(new_length);
-	if (cports) {
-		memcpy(cports, original_cports, sizeof(int) * original_length);
-		cports_free(original_cports);
-		/* Init new cports */
-		for (i = original_length; i < new_length; ++i) {
-			k_fifo_init(&cports[i]);
-		}
-	}
-
-	return cports;
-}
-
 static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	struct sockaddr_in6 node_addr;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-
-	memcpy(&node_addr.sin6_addr, &ctrl_data->addr, sizeof(struct in6_addr));
-	node_addr.sin6_family = AF_INET6;
-	node_addr.sin6_scope_id = 0;
-	node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_id);
-
-	ctrl_data->cports_queue =
-		cports_realloc(ctrl_data->cports_queue, ctrl_data->cports_len, cport_id + 1);
-	if (!ctrl_data->cports_queue) {
-		return -ENOMEM;
-	}
-	/* Realloc will never shrink */
-	ctrl_data->cports_len = MAX(cport_id + 1, ctrl_data->cports_len);
 
 	/* Do not create socket for cports other than 0 */
 	if (cport_id != 0) {
 		return 0;
 	}
 
+	memcpy(&node_addr.sin6_addr, &ctrl_data->addr, sizeof(struct in6_addr));
+	node_addr.sin6_family = AF_INET6;
+	node_addr.sin6_scope_id = 0;
+	node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_id);
+
 	ctrl_data->sock = connect_to_node((struct sockaddr *)&node_addr);
 	return ctrl_data->sock;
-}
-
-static void drain_queue(struct k_fifo *queue)
-{
-	struct gb_message *msg;
-
-	while ((msg = k_fifo_get(queue, K_NO_WAIT))) {
-		gb_message_dealloc(msg);
-	}
 }
 
 static void node_intf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
-	if (cport_id >= ctrl_data->cports_len) {
-		return;
-	}
-
 	/* Cleanup queue */
-	drain_queue(&ctrl_data->cports_queue[cport_id]);
+	msgs_drain_by_cport(&ctrl_data->msgs, cport_id);
 
 	/* Close socket for cport 0 */
 	if (cport_id == 0) {
@@ -318,15 +285,10 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	bool flag = false;
 	struct gb_message *msg;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-	uint16_t temp;
-
-	if (cport_id >= ctrl_data->cports_len) {
-		LOG_ERR("Cport ID greater than Cports Length");
-		return NULL;
-	}
 
 	/* return any pending message */
-	if ((msg = k_fifo_get(&ctrl_data->cports_queue[cport_id], K_NO_WAIT))) {
+	if ((msg = msgs_find(&ctrl_data->msgs, cport_id))) {
+		LOG_DBG("Return Point 1");
 		return msg;
 	}
 
@@ -341,13 +303,13 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 	}
 
 	/* Add to queue if the message is of different cport */
-	temp = gb_message_pad_read(msg);
-	if (temp != cport_id) {
-		k_fifo_put(&ctrl_data->cports_queue[temp], msg);
-		return NULL;
+	if (gb_message_pad_read(msg) == cport_id) {
+		LOG_DBG("Return Point 2");
+		return msg;
 	}
 
-	return msg;
+	sys_dlist_append(&ctrl_data->msgs, &msg->node);
+	return NULL;
 }
 
 static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
@@ -355,16 +317,10 @@ static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, ui
 	int ret;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
-	if (cport_id >= ctrl_data->cports_len) {
-		ret = -1;
-		goto free_msg;
-	}
-
 	gb_message_pad_write(msg, cport_id);
 	ret = gb_message_send(ctrl_data->sock, msg);
-
-free_msg:
 	gb_message_dealloc(msg);
+
 	return ret;
 }
 
@@ -380,8 +336,7 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 		goto early_exit;
 	}
 
-	ctrl_data->cports_queue = NULL;
-	ctrl_data->cports_len = 0;
+	sys_dlist_init(&ctrl_data->msgs);
 	net_ipaddr_copy(&ctrl_data->addr, addr);
 	ret = node_addr_cache_insert(addr);
 	if (ret) {
@@ -411,7 +366,6 @@ early_exit:
 void node_destroy_interface(struct gb_interface *inf)
 {
 	struct node_control_data *ctrl_data;
-	size_t i;
 
 	if (inf == NULL) {
 		return;
@@ -421,13 +375,9 @@ void node_destroy_interface(struct gb_interface *inf)
 
 	sys_dlist_remove(&inf->node);
 
-	/* drain all queues */
-	for (i = 0; i < ctrl_data->cports_len; ++i) {
-		drain_queue(&ctrl_data->cports_queue[i]);
-	}
+	msgs_drain_all(&ctrl_data->msgs);
 
 	node_addr_cache_remove(&ctrl_data->addr);
-	cports_free(ctrl_data->cports_queue);
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 	gb_interface_dealloc(inf);
 }
@@ -453,10 +403,16 @@ void node_filter(struct in6_addr *active_addr, size_t active_len)
 
 	for (i = 0; i < active_len; ++i) {
 		ret = node_addr_cache_search(&active_addr[i]);
+		LOG_DBG("Old Node: %d", ret);
 
 		/* Handle New Node */
 		if (ret < 0) {
+			LOG_DBG("New node discovered");
 			inf = node_create_interface(&active_addr[i]);
+			if (!inf) {
+				LOG_ERR("Failed to create interface");
+				continue;
+			}
 			svc_send_module_inserted(inf->id);
 		}
 	}

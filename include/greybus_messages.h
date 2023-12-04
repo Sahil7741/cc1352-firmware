@@ -7,6 +7,8 @@
 #define _GREYBUS_MESSAGES_H_
 
 #include <zephyr/types.h>
+#include <zephyr/sys/dlist.h>
+#include <zephyr/sys/byteorder.h>
 #include "greybus_protocol.h"
 #include <string.h>
 
@@ -20,6 +22,7 @@
  */
 struct gb_message {
 	void *fifo_reserved;
+	sys_dnode_t node;
 	struct gb_operation_msg_hdr header;
 	uint8_t payload[];
 };
@@ -162,7 +165,7 @@ static inline uint16_t gb_message_pad_read(const struct gb_message *msg)
 {
 	uint16_t pad;
 	memcpy(&pad, msg->header.pad, sizeof(pad));
-	return pad;
+	return sys_le16_to_cpu(pad);
 }
 
 /*
@@ -174,7 +177,7 @@ static inline uint16_t gb_message_pad_read(const struct gb_message *msg)
  */
 static inline void gb_message_pad_write(struct gb_message *msg, uint16_t pad)
 {
-	memcpy(msg->header.pad, &pad, sizeof(pad));
+	memcpy(msg->header.pad, &sys_cpu_to_le16(pad), sizeof(pad));
 }
 
 #endif

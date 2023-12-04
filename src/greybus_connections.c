@@ -4,6 +4,7 @@
  */
 
 #include "greybus_connections.h"
+#include "greybus_messages.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
 
@@ -23,12 +24,18 @@ static uint8_t gb_connection_process(struct gb_connection *conn)
 		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
 						 conn->peer_cport_id);
 		count++;
+		LOG_DBG("Msg %u From Intf %u, Cport %u to Intf %u, Cport %u", msg->header.id,
+			conn->inf_ap->id, conn->ap_cport_id, conn->inf_peer->id,
+			conn->peer_cport_id);
 	}
 
 	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
 	if (msg) {
 		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
 		count++;
+		LOG_DBG("Msg %u From Intf %u, Cport %u to Intf %u, Cport %u", msg->header.id,
+			conn->inf_peer->id, conn->peer_cport_id, conn->inf_ap->id,
+			conn->ap_cport_id);
 	}
 
 	return count;
