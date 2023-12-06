@@ -6,7 +6,6 @@
 #include "ap.h"
 #include "apbridge.h"
 #include "greybus_protocol.h"
-#include "mdns.h"
 #include "hdlc.h"
 #include "node.h"
 #include "svc.h"
@@ -18,15 +17,29 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_ip.h>
 
-#define UART_DEVICE_NODE        DT_CHOSEN(zephyr_shell_uart)
-#define CONTROL_SVC_START       0x01
-#define CONTROL_SVC_STOP        0x02
+#define UART_DEVICE_NODE  DT_CHOSEN(zephyr_shell_uart)
+#define CONTROL_SVC_START 0x01
+#define CONTROL_SVC_STOP  0x02
 
 LOG_MODULE_REGISTER(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
-static int hdlc_send_callback(const uint8_t *buffer, size_t buffer_len) {
+/**
+ * struct hdlc_greybus_frame - Structure to represent greybus HDLC frame
+ *
+ * @cport: cport id
+ * @hdr: greybus operation header
+ * @payload: greybus message payload
+ */
+struct hdlc_greybus_frame {
+	uint16_t cport;
+	struct gb_operation_msg_hdr hdr;
+	uint8_t payload[];
+} __packed;
+
+static int hdlc_send_callback(const uint8_t *buffer, size_t buffer_len)
+{
 	size_t i;
 
 	for (i = 0; i < buffer_len; ++i) {
@@ -73,23 +86,27 @@ static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 {
 	struct gb_message *msg;
 	int ret;
-	struct gb_operation_msg_hdr *hdr = (struct gb_operation_msg_hdr *)buffer;
+	struct hdlc_greybus_frame *gb_frame = (struct hdlc_greybus_frame *)buffer;
+	size_t msg_len = buffer_len - sizeof(uint16_t);
+	struct gb_operation_msg_hdr *hdr = (struct gb_operation_msg_hdr *)&buffer[sizeof(uint16_t)];
 
-	if (hdr->size > buffer_len) {
+	if (sys_le16_to_cpu(gb_frame->hdr.size) > msg_len) {
 		LOG_ERR("Greybus Message size is greater than received buffer.");
 		return -1;
 	}
 
-	msg = gb_message_alloc(gb_hdr_payload_len(hdr), hdr->type, hdr->id,
-			       hdr->status);
+	msg = gb_message_alloc(gb_hdr_payload_len(hdr), gb_frame->hdr.type, gb_frame->hdr.id,
+			       gb_frame->hdr.status);
 	if (!msg) {
 		LOG_ERR("Failed to allocate greybus message");
 		return -1;
 	}
-	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], gb_message_payload_len(msg));
-	ret = ap_rx_submit(msg, sys_get_le16(hdr->pad));
+
+	memcpy(msg->payload, gb_frame->payload, gb_message_payload_len(msg));
+	ret = ap_rx_submit(msg, sys_le16_to_cpu(gb_frame->cport));
 	if (ret < 0) {
 		LOG_ERR("Failed add message to AP Queue");
+		return ret;
 	}
 
 	return 0;

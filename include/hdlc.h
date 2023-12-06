@@ -85,11 +85,12 @@ static inline int gb_message_hdlc_send(struct gb_message *msg, uint16_t cport)
 {
 	char buffer[HDLC_MAX_BLOCK_SIZE];
 
-	memcpy(msg->header.pad, &sys_cpu_to_le16(cport), sizeof(cport));
-	memcpy(buffer, &msg->header, sizeof(struct gb_operation_msg_hdr));
-	memcpy(&buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload, gb_message_payload_len(msg));
+	memcpy(buffer, &sys_cpu_to_le16(cport), sizeof(cport));
+	memcpy(&buffer[sizeof(cport)], &msg->header, sizeof(struct gb_operation_msg_hdr));
+	memcpy(&buffer[sizeof(struct gb_operation_msg_hdr) + sizeof(cport)], msg->payload,
+	       gb_message_payload_len(msg));
 
-	hdlc_block_send_sync(buffer, msg->header.size, ADDRESS_GREYBUS, 0x03);
+	hdlc_block_send_sync(buffer, msg->header.size + sizeof(cport), ADDRESS_GREYBUS, 0x03);
 
 	return 0;
 }

@@ -36,7 +36,7 @@ struct gb_message {
  */
 static inline size_t gb_hdr_payload_len(const struct gb_operation_msg_hdr *hdr)
 {
-	return hdr->size - sizeof(struct gb_operation_msg_hdr);
+	return sys_le16_to_cpu(hdr->size) - sizeof(struct gb_operation_msg_hdr);
 }
 
 /*
