@@ -20,12 +20,12 @@ LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct node_control_data {
 	struct in6_addr addr;
-	int sock;
 	sys_dlist_t msgs;
+	int sock;
 };
 
 K_MEM_SLAB_DEFINE_STATIC(node_control_data_slab, sizeof(struct node_control_data),
-			 MAX_GREYBUS_NODES, 8);
+			 MAX_GREYBUS_NODES, 4);
 
 static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
 static struct in6_addr node_addr_cache[MAX_GREYBUS_NODES];
@@ -288,7 +288,6 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 
 	/* return any pending message */
 	if ((msg = msgs_find(&ctrl_data->msgs, cport_id))) {
-		LOG_DBG("Return Point 1");
 		return msg;
 	}
 
@@ -304,7 +303,6 @@ static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cpo
 
 	/* Add to queue if the message is of different cport */
 	if (gb_message_pad_read(msg) == cport_id) {
-		LOG_DBG("Return Point 2");
 		return msg;
 	}
 

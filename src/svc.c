@@ -58,6 +58,8 @@ static int svc_inf_create_connection(struct gb_controller *ctrl, uint16_t cport_
 
 static void svc_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_id)
 {
+	struct gb_message *msg;
+
 	ARG_UNUSED(ctrl);
 
 	if (cport_id != 0) {
@@ -65,13 +67,10 @@ static void svc_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cpor
 		return;
 	}
 
-	struct gb_message *msg;
-
 	/* Set svc to uninitialized */
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
 
-	msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
-	while (msg) {
+	while ((msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT))) {
 		/* Free all pending messages */
 		gb_message_dealloc(msg);
 		msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
@@ -321,6 +320,11 @@ static void svc_connection_create_handler(struct gb_message *msg)
 	struct gb_interface *intf_1, *intf_2;
 	struct gb_connection *conn;
 
+	if (req->intf1_id == req->intf2_id && req->cport1_id == req->cport2_id) {
+		LOG_ERR("Cannot create loop connection");
+		goto fail;
+	}
+
 	intf_1 = gb_interface_find_by_id(req->intf1_id);
 	if (!intf_1) {
 		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
@@ -337,6 +341,9 @@ static void svc_connection_create_handler(struct gb_message *msg)
 		LOG_ERR("Failed to create connection");
 		goto fail;
 	}
+
+	LOG_DBG("Created connection between Intf %u, Cport %u and Intf %u, Cport %u", req->intf1_id,
+		req->cport1_id, req->intf2_id, req->cport2_id);
 
 	svc_response_helper(msg, NULL, 0, GB_SVC_OP_SUCCESS);
 	return;
