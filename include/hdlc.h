@@ -81,10 +81,11 @@ int hdlc_rx_finish(uint32_t written);
  *
  * @param Greybus message
  */
-static inline int gb_message_hdlc_send(const struct gb_message *msg)
+static inline int gb_message_hdlc_send(struct gb_message *msg, uint16_t cport)
 {
 	char buffer[HDLC_MAX_BLOCK_SIZE];
 
+	memcpy(msg->header.pad, &sys_cpu_to_le16(cport), sizeof(cport));
 	memcpy(buffer, &msg->header, sizeof(struct gb_operation_msg_hdr));
 	memcpy(&buffer[sizeof(struct gb_operation_msg_hdr)], msg->payload, gb_message_payload_len(msg));
 

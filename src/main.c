@@ -86,9 +86,8 @@ static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 		LOG_ERR("Failed to allocate greybus message");
 		return -1;
 	}
-	memcpy(msg->header.pad, hdr->pad, sizeof(uint16_t));
 	memcpy(msg->payload, &buffer[sizeof(struct gb_operation_msg_hdr)], gb_message_payload_len(msg));
-	ret = ap_rx_submit(msg);
+	ret = ap_rx_submit(msg, sys_get_le16(hdr->pad));
 	if (ret < 0) {
 		LOG_ERR("Failed add message to AP Queue");
 	}

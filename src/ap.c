@@ -15,9 +15,7 @@ static int ap_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint
 {
 	ARG_UNUSED(ctrl);
 
-	/* We use padding to pass AP Cport */
-	gb_message_pad_write(msg, cport_id);
-	gb_message_hdlc_send(msg);
+	gb_message_hdlc_send(msg, cport_id);
 	gb_message_dealloc(msg);
 	return 0;
 }
@@ -74,10 +72,8 @@ struct gb_interface *ap_init(void)
 	return &intf;
 }
 
-int ap_rx_submit(struct gb_message *msg)
+int ap_rx_submit(struct gb_message *msg, uint16_t cport_id)
 {
-	uint16_t cport_id = gb_message_pad_read(msg);
-
 	if (cport_id >= AP_MAX_NODES) {
 		return -1;
 	}

@@ -33,10 +33,11 @@ void ap_deinit(void);
  * Submit message received by AP from transport
  *
  * @param greybus message
+ * @param cport_id
  *
  * @return 0 if successful, negative in case of error
  */
-int ap_rx_submit(struct gb_message *msg);
+int ap_rx_submit(struct gb_message *msg, uint16_t cport_id);
 
 /*
  * Get AP Interface
