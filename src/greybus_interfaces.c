@@ -11,7 +11,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/dlist.h>
 
-#define INTERFACE_ID_START     2
+#define INTERFACE_ID_START     3
 #define MAX_GREYBUS_INTERFACES CONFIG_BEAGLEPLAY_GREYBUS_MAX_INTERFACES
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);

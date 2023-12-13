@@ -6,8 +6,8 @@
 #ifndef _OPERATIONS_H_
 #define _OPERATIONS_H_
 
-#include "greybus_protocol.h"
 #include <zephyr/sys/dlist.h>
+#include <zephyr/types.h>
 
 struct gb_controller;
 

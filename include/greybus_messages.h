@@ -180,4 +180,9 @@ static inline void gb_message_pad_write(struct gb_message *msg, uint16_t pad)
 	memcpy(msg->header.pad, &sys_cpu_to_le16(pad), sizeof(pad));
 }
 
+static inline uint8_t gb_message_type(const struct gb_message *msg)
+{
+	return msg->header.type;
+}
+
 #endif
