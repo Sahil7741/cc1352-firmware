@@ -20,8 +20,6 @@ LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct local_node_controller_data {
 	struct k_fifo queues[CPORTS_NUM];
-	uint16_t log_buffer_pos;
-	uint8_t log_buffer[256];
 };
 
 struct gb_control_version_response {
@@ -30,7 +28,7 @@ struct gb_control_version_response {
 } __packed;
 
 struct gb_control_get_manifest_size_response {
-	uint8_t manifest_size;
+	uint16_t manifest_size;
 } __packed;
 
 /* Control protocol manifest get request has no payload */
@@ -116,7 +114,7 @@ static void control_protocol_get_manifest_size_handler(struct gb_controller *ctr
 						       struct gb_message *msg)
 {
 	struct gb_control_get_manifest_size_response response = {
-		.manifest_size = sizeof(manifest),
+		.manifest_size = sys_cpu_to_le16(sizeof(manifest)),
 	};
 
 	response_helper(ctrl, msg, &response, sizeof(response), GB_OP_SUCCESS,
@@ -196,8 +194,7 @@ static void intf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_i
 	queue_drain(&ctrl_data->queues[cport_id]);
 }
 
-static struct local_node_controller_data local_node_ctrl_data = {.log_buffer_pos = 0,
-								 .log_buffer = {0}};
+static struct local_node_controller_data local_node_ctrl_data;
 
 static struct gb_interface intf = {.id = LOCAL_NODE_ID,
 				   .controller = {.read = intf_read,
