@@ -6,6 +6,7 @@
  */
 
 #include "greybus_connections.h"
+#include "local_node.h"
 #include "svc.h"
 #include "ap.h"
 #include "greybus_protocol.h"
@@ -234,6 +235,9 @@ static void svc_hello_response_handler(struct gb_message *msg)
 
 	LOG_DBG("Hello Response Success");
 	atomic_set_bit(svc_is_read_flag, 0);
+
+	/* Add local Module */
+	svc_send_module_inserted(LOCAL_NODE_ID);
 }
 
 static void svc_empty_request_handler(struct gb_message *msg)
