@@ -19,7 +19,7 @@ static uint8_t gb_connection_process(struct gb_connection *conn)
 	uint8_t count = 0;
 	struct gb_message *msg;
 
-	LOG_DBG("Trying to read from Intf %u, Cport %u", conn->inf_ap->id, conn->ap_cport_id);
+	// LOG_DBG("Trying to read from Intf %u, Cport %u", conn->inf_ap->id, conn->ap_cport_id);
 	msg = conn->inf_ap->controller.read(&conn->inf_ap->controller, conn->ap_cport_id);
 	if (msg) {
 		conn->inf_peer->controller.write(&conn->inf_peer->controller, msg,
@@ -30,7 +30,7 @@ static uint8_t gb_connection_process(struct gb_connection *conn)
 			conn->peer_cport_id);
 	}
 
-	LOG_DBG("Trying to read from Intf %u, Cport %u", conn->inf_peer->id, conn->peer_cport_id);
+	// LOG_DBG("Trying to read from Intf %u, Cport %u", conn->inf_peer->id, conn->peer_cport_id);
 	msg = conn->inf_peer->controller.read(&conn->inf_peer->controller, conn->peer_cport_id);
 	if (msg) {
 		conn->inf_ap->controller.write(&conn->inf_ap->controller, msg, conn->ap_cport_id);
