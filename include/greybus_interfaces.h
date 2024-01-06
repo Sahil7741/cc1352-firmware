@@ -8,18 +8,9 @@
 
 #include <zephyr/sys/dlist.h>
 #include <zephyr/types.h>
+#include "greybus_messages.h"
 
-struct gb_controller;
-
-/*
- * Callabck for reading from an interface
- *
- * @param controller
- * @param Cport to read from
- *
- * @return greybus message if available. Else NULL
- */
-typedef struct gb_message *(*gb_controller_read_callback_t)(struct gb_controller *, uint16_t);
+struct gb_interface;
 
 /*
  * Callback for writing to an interface
@@ -30,8 +21,7 @@ typedef struct gb_message *(*gb_controller_read_callback_t)(struct gb_controller
  *
  * @return 0 if successful. Negative in case of error
  */
-typedef int (*gb_controller_write_callback_t)(struct gb_controller *, struct gb_message *,
-					      uint16_t);
+typedef int (*gb_controller_write_callback_t)(struct gb_interface *, struct gb_message *, uint16_t);
 
 /*
  * Callback to create new connection with a Cport in the interface
@@ -41,7 +31,7 @@ typedef int (*gb_controller_write_callback_t)(struct gb_controller *, struct gb_
  *
  * @return 0 if successful. Negative in case of error
  */
-typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_t);
+typedef int (*gb_controller_create_connection_t)(struct gb_interface *, uint16_t);
 
 /*
  * Callback to destroy connection with a Cport in the interface
@@ -49,34 +39,22 @@ typedef int (*gb_controller_create_connection_t)(struct gb_controller *, uint16_
  * @param controller
  * @param cport
  */
-typedef void (*gb_controller_destroy_connection_t)(struct gb_controller *, uint16_t);
-
-/*
- * Controller for each greybus interface
- *
- * @param read: a non-blocking read function
- * @param write: a non-blocking write function. The ownership of message is
- * transferred.
- * @param ctrl_data: private controller data
- */
-struct gb_controller {
-	gb_controller_read_callback_t read;
-	gb_controller_write_callback_t write;
-	gb_controller_create_connection_t create_connection;
-	gb_controller_destroy_connection_t destroy_connection;
-	void *ctrl_data;
-};
+typedef void (*gb_controller_destroy_connection_t)(struct gb_interface *, uint16_t);
 
 /*
  * A greybus interface. Can have multiple Cports
  *
  * @param id: Interface ID
- * @param controller: A controller which provides operations for this interface
+ * @param write: a non-blocking write function. The ownership of message is
+ * transferred.
+ * @param ctrl_data: private controller data
  */
 struct gb_interface {
 	uint8_t id;
-	struct gb_controller controller;
-	sys_dnode_t node;
+	gb_controller_write_callback_t write;
+	gb_controller_create_connection_t create_connection;
+	gb_controller_destroy_connection_t destroy_connection;
+	void *ctrl_data;
 };
 
 /*
@@ -90,8 +68,7 @@ struct gb_interface {
  *
  * @return allocated greybus interface. NULL in case of error
  */
-struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
-					gb_controller_write_callback_t write_cb,
+struct gb_interface *gb_interface_alloc(gb_controller_write_callback_t write_cb,
 					gb_controller_create_connection_t create_connection_cb,
 					gb_controller_destroy_connection_t destroy_connection_cb,
 					void *ctrl_data);

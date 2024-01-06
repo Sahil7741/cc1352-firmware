@@ -5,7 +5,6 @@
  * Modifications Copyright (c) 2023 Ayush Singh <ayushdevel1325@gmail.com>
  */
 
-#include "greybus_connections.h"
 #include "local_node.h"
 #include "svc.h"
 #include "ap.h"
@@ -36,31 +35,17 @@ struct svc_module_removed_map_item {
 K_MEM_SLAB_DEFINE_STATIC(svc_module_removed_map, sizeof(struct svc_module_removed_map_item),
 			 MAX_GREYBUS_NODES, 4);
 
-struct svc_control_data {
-	struct k_fifo pending_read;
-};
+static int svc_inf_write(struct gb_interface *, struct gb_message *, uint16_t);
 
-static struct svc_control_data svc_ctrl_data;
-
-static struct gb_message *svc_inf_read(struct gb_controller *, uint16_t);
-static int svc_inf_write(struct gb_controller *, struct gb_message *, uint16_t);
-
-static bool svc_is_ready(void)
-{
-	return atomic_test_bit(svc_is_read_flag, 0);
-}
-
-static int svc_inf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
+static int svc_inf_create_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
 	ARG_UNUSED(ctrl);
 
 	return cport_id == 0 && !svc_is_ready();
 }
 
-static void svc_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_id)
+static void svc_inf_destroy_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
-	struct gb_message *msg;
-
 	ARG_UNUSED(ctrl);
 
 	if (cport_id != 0) {
@@ -70,20 +55,13 @@ static void svc_inf_destroy_connection(struct gb_controller *ctrl, uint16_t cpor
 
 	/* Set svc to uninitialized */
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
-
-	while ((msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT))) {
-		/* Free all pending messages */
-		gb_message_dealloc(msg);
-		msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
-	}
 }
 
 static struct gb_interface intf = {.id = SVC_INF_ID,
-				   .controller = {.read = svc_inf_read,
-						  .write = svc_inf_write,
-						  .create_connection = svc_inf_create_connection,
-						  .destroy_connection = svc_inf_destroy_connection,
-						  .ctrl_data = &svc_ctrl_data}};
+				   .write = svc_inf_write,
+				   .create_connection = svc_inf_create_connection,
+				   .destroy_connection = svc_inf_destroy_connection,
+				   .ctrl_data = NULL};
 
 struct gb_svc_intf_resume_response {
 	uint8_t status;
@@ -189,6 +167,7 @@ struct gb_svc_intf_set_pwrm_response {
 
 static int control_send_request(void *payload, size_t payload_len, uint8_t request_type)
 {
+	int ret;
 	struct gb_message *msg;
 
 	msg = gb_message_request_alloc(payload, payload_len, request_type, false);
@@ -196,7 +175,11 @@ static int control_send_request(void *payload, size_t payload_len, uint8_t reque
 		return -ENOMEM;
 	}
 
-	k_fifo_put(&svc_ctrl_data.pending_read, msg);
+	ret = connection_send(SVC_INF_ID, 0, msg);
+	if (ret < 0) {
+		LOG_ERR("Failed to send SVC message");
+		return ret;
+	}
 
 	return msg->header.id;
 }
@@ -212,13 +195,17 @@ static int svc_send_hello(void)
 static void svc_response_helper(struct gb_message *msg, const void *payload, size_t payload_len,
 				uint8_t status)
 {
+	int ret;
 	struct gb_message *resp = gb_message_response_alloc(payload, payload_len, msg->header.type,
 							    msg->header.id, status);
 	if (resp == NULL) {
 		LOG_ERR("Failed to allocate response for %X", msg->header.type);
 		return;
 	}
-	k_fifo_put(&svc_ctrl_data.pending_read, resp);
+	ret = connection_send(SVC_INF_ID, 0, resp);
+	if (ret < 0) {
+		LOG_ERR("Failed to send SVC message");
+	}
 }
 
 static void svc_version_response_handler(struct gb_message *msg)
@@ -234,10 +221,9 @@ static void svc_hello_response_handler(struct gb_message *msg)
 	ARG_UNUSED(msg);
 
 	LOG_DBG("Hello Response Success");
-	atomic_set_bit(svc_is_read_flag, 0);
 
 	/* Add local Module */
-	svc_send_module_inserted(LOCAL_NODE_ID);
+	// svc_send_module_inserted(LOCAL_NODE_ID);
 }
 
 static void svc_empty_request_handler(struct gb_message *msg)
@@ -320,28 +306,16 @@ static void svc_dme_peer_set_handler(struct gb_message *msg)
 
 static void svc_connection_create_handler(struct gb_message *msg)
 {
+	int ret;
 	struct gb_svc_conn_create_request *req = (struct gb_svc_conn_create_request *)msg->payload;
-	struct gb_interface *intf_1, *intf_2;
-	struct gb_connection *conn;
 
 	if (req->intf1_id == req->intf2_id && req->cport1_id == req->cport2_id) {
 		LOG_ERR("Cannot create loop connection");
 		goto fail;
 	}
 
-	intf_1 = gb_interface_find_by_id(req->intf1_id);
-	if (!intf_1) {
-		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
-		goto fail;
-	}
-	intf_2 = gb_interface_find_by_id(req->intf2_id);
-	if (!intf_2) {
-		LOG_DBG("Unknown Interface 2: %u", req->intf2_id);
-		goto fail;
-	}
-
-	conn = gb_connection_create(intf_1, intf_2, req->cport1_id, req->cport2_id);
-	if (!conn) {
+	ret = connection_create(req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
+	if (ret < 0) {
 		LOG_ERR("Failed to create connection");
 		goto fail;
 	}
@@ -361,20 +335,8 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 	int ret;
 	struct gb_svc_conn_destroy_request *req =
 		(struct gb_svc_conn_destroy_request *)msg->payload;
-	struct gb_interface *intf_1, *intf_2;
 
-	intf_1 = gb_interface_find_by_id(req->intf1_id);
-	if (!intf_1) {
-		LOG_DBG("Unknown Interface 1: %u", req->intf1_id);
-		goto fail;
-	}
-	intf_2 = gb_interface_find_by_id(req->intf2_id);
-	if (!intf_2) {
-		LOG_DBG("Unknown Interface 2: %u", req->intf2_id);
-		goto fail;
-	}
-
-	ret = gb_connection_destroy(intf_1, intf_2, req->cport1_id, req->cport2_id);
+	ret = connection_destroy(req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
 	if (ret < 0) {
 		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "
 			"and Cport 2: %u of Interface 2: %u",
@@ -399,11 +361,9 @@ static void svc_interface_resume_handler(struct gb_message *msg)
 
 static void svc_module_inserted_response_handler(struct gb_message *msg)
 {
-	if (gb_message_is_success(msg)) {
-		LOG_DBG("Successful Module Inserted Response");
-	} else {
+	if (!gb_message_is_success(msg)) {
 		/* TODO: Add functionality to remove the interface in case of error */
-		LOG_DBG("Module Inserted Event failed");
+		LOG_ERR("Module Inserted Event failed");
 	}
 }
 
@@ -421,7 +381,8 @@ static void svc_module_removed_response_handler(struct gb_message *msg)
 					LOG_ERR("Failed to find the removed interface");
 				}
 
-				gb_connection_destroy_by_interface(intf);
+				/* I think that AP should destroy any connections left but not sure
+				 */
 				node_destroy_interface(intf);
 				k_mem_slab_free(&svc_module_removed_map, (void **)&item);
 				break;
@@ -432,8 +393,6 @@ static void svc_module_removed_response_handler(struct gb_message *msg)
 
 static void gb_handle_msg(struct gb_message *msg)
 {
-	LOG_DBG("Process SVC Operation %u of type %X", msg->header.id, msg->header.type);
-
 	switch (msg->header.type) {
 	case GB_SVC_TYPE_INTF_DEVICE_ID_REQUEST:
 	case GB_SVC_TYPE_ROUTE_CREATE_REQUEST:
@@ -494,20 +453,7 @@ static void gb_handle_msg(struct gb_message *msg)
 	}
 }
 
-static struct gb_message *svc_inf_read(struct gb_controller *ctrl, uint16_t cport_id)
-{
-	ARG_UNUSED(ctrl);
-
-	if (cport_id != 0) {
-		LOG_ERR("Unknown SVC Cport");
-		return NULL;
-	}
-
-	struct gb_message *msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
-	return msg;
-}
-
-static int svc_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
+static int svc_inf_write(struct gb_interface *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
 	if (cport_id != 0) {
 		LOG_ERR("Unknown SVC Cport");
@@ -555,11 +501,9 @@ int svc_send_version(void)
 				    GB_SVC_TYPE_PROTOCOL_VERSION_REQUEST);
 }
 
-struct gb_interface *svc_init(void)
+void svc_init(void)
 {
-	atomic_set_bit_to(svc_is_read_flag, 0, false);
-	k_fifo_init(&svc_ctrl_data.pending_read);
-	return &intf;
+	atomic_set_bit(svc_is_read_flag, 0);
 }
 
 struct gb_interface *svc_interface(void)
@@ -573,12 +517,10 @@ struct gb_interface *svc_interface(void)
 
 void svc_deinit(void)
 {
-	struct gb_message *msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
-
 	atomic_set_bit_to(svc_is_read_flag, 0, false);
+}
 
-	while (msg) {
-		gb_message_dealloc(msg);
-		msg = k_fifo_get(&svc_ctrl_data.pending_read, K_NO_WAIT);
-	}
+bool svc_is_ready(void)
+{
+	return atomic_test_bit(svc_is_read_flag, 0);
 }

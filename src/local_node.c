@@ -11,16 +11,13 @@
 #include "local_node.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include "apbridge.h"
 
 #define CPORTS_NUM 1
 
 #define CONTROL_PROTOCOL_CPORT 0
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
-
-struct local_node_controller_data {
-	struct k_fifo queues[CPORTS_NUM];
-};
 
 struct gb_control_version_response {
 	uint8_t major;
@@ -56,19 +53,10 @@ static const uint8_t manifest[] = {
 	0x43, 0x31, 0x33, 0x35, 0x32, 0x00, 0x18, 0x00, 0x02, 0x00, 0x11, 0x02, 0x42, 0x65, 0x61,
 	0x67, 0x6c, 0x65, 0x50, 0x6c, 0x61, 0x79, 0x20, 0x43, 0x43, 0x31, 0x33, 0x35, 0x32, 0x00};
 
-static void queue_drain(struct k_fifo *queue)
-{
-	struct gb_message *msg;
-
-	while ((msg = k_fifo_get(queue, K_NO_WAIT))) {
-		gb_message_dealloc(msg);
-	}
-}
-
-static void response_helper(struct gb_controller *ctrl, struct gb_message *msg, const void *payload,
+static void response_helper(struct gb_interface *ctrl, struct gb_message *msg, const void *payload,
 			    size_t payload_len, uint8_t status, uint16_t cport_id)
 {
-	struct local_node_controller_data *ctrl_data = ctrl->ctrl_data;
+	int ret;
 	struct gb_message *resp = gb_message_response_alloc(payload, payload_len, msg->header.type,
 							    msg->header.id, status);
 
@@ -76,30 +64,19 @@ static void response_helper(struct gb_controller *ctrl, struct gb_message *msg, 
 		LOG_ERR("Failed to allocate response for %X", msg->header.type);
 		return;
 	}
-	k_fifo_put(&ctrl_data->queues[cport_id], resp);
+	ret = connection_send(LOCAL_NODE_ID, cport_id, resp);
+	if (ret < 0) {
+		LOG_ERR("Failed to send response for %X", msg->header.type);
+	}
 }
 
-static struct gb_message *intf_read(struct gb_controller *ctrl, uint16_t cport_id)
-{
-	struct local_node_controller_data *ctrl_data = ctrl->ctrl_data;
-
-	return k_fifo_get(&ctrl_data->queues[cport_id], K_NO_WAIT);
-}
-
-static void control_protocol_cport_shutdown_handler(struct gb_controller *ctrl,
+static void control_protocol_cport_shutdown_handler(struct gb_interface *ctrl,
 						    struct gb_message *msg)
 {
-	size_t i;
-	struct local_node_controller_data *ctrl_data = ctrl->ctrl_data;
-
-	for (i = 0; i < CPORTS_NUM; i++) {
-		queue_drain(&ctrl_data->queues[i]);
-	}
-
 	response_helper(ctrl, msg, NULL, 0, GB_OP_SUCCESS, CONTROL_PROTOCOL_CPORT);
 }
 
-static void control_protocol_version_handler(struct gb_controller *ctrl, struct gb_message *msg)
+static void control_protocol_version_handler(struct gb_interface *ctrl, struct gb_message *msg)
 {
 	struct gb_control_version_response response = {
 		.major = 0,
@@ -110,7 +87,7 @@ static void control_protocol_version_handler(struct gb_controller *ctrl, struct 
 			CONTROL_PROTOCOL_CPORT);
 }
 
-static void control_protocol_get_manifest_size_handler(struct gb_controller *ctrl,
+static void control_protocol_get_manifest_size_handler(struct gb_interface *ctrl,
 						       struct gb_message *msg)
 {
 	struct gb_control_get_manifest_size_response response = {
@@ -121,19 +98,19 @@ static void control_protocol_get_manifest_size_handler(struct gb_controller *ctr
 			CONTROL_PROTOCOL_CPORT);
 }
 
-static void control_protocol_get_manifest_handler(struct gb_controller *ctrl,
+static void control_protocol_get_manifest_handler(struct gb_interface *ctrl,
 						  struct gb_message *msg)
 {
 	response_helper(ctrl, msg, manifest, sizeof(manifest), GB_OP_SUCCESS,
 			CONTROL_PROTOCOL_CPORT);
 }
 
-static void control_protocol_empty_handler(struct gb_controller *ctrl, struct gb_message *msg)
+static void control_protocol_empty_handler(struct gb_interface *ctrl, struct gb_message *msg)
 {
 	response_helper(ctrl, msg, NULL, 0, GB_OP_SUCCESS, CONTROL_PROTOCOL_CPORT);
 }
 
-static void control_protocol_handle(struct gb_controller *ctrl, struct gb_message *msg)
+static void control_protocol_handle(struct gb_interface *ctrl, struct gb_message *msg)
 {
 
 	switch (gb_message_type(msg)) {
@@ -163,7 +140,7 @@ static void control_protocol_handle(struct gb_controller *ctrl, struct gb_messag
 	}
 }
 
-static int intf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
+static int intf_write(struct gb_interface *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
 	LOG_DBG("Local node received %u of type %X on cport %u", msg->header.id,
 		gb_message_type(msg), cport_id);
@@ -179,29 +156,20 @@ static int intf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16
 	return 0;
 }
 
-static int intf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
+static int intf_create_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
-	struct local_node_controller_data *ctrl_data = ctrl->ctrl_data;
-
-	k_fifo_init(&ctrl_data->queues[cport_id]);
 	return 0;
 }
 
-static void intf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_id)
+static void intf_destroy_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
-	struct local_node_controller_data *ctrl_data = ctrl->ctrl_data;
-
-	queue_drain(&ctrl_data->queues[cport_id]);
 }
 
-static struct local_node_controller_data local_node_ctrl_data;
-
 static struct gb_interface intf = {.id = LOCAL_NODE_ID,
-				   .controller = {.read = intf_read,
-						  .write = intf_write,
-						  .create_connection = intf_create_connection,
-						  .destroy_connection = intf_destroy_connection,
-						  .ctrl_data = &local_node_ctrl_data}};
+				   .write = intf_write,
+				   .create_connection = intf_create_connection,
+				   .destroy_connection = intf_destroy_connection,
+				   .ctrl_data = NULL};
 
 struct gb_interface *local_node_interface(void)
 {

@@ -9,7 +9,7 @@
 #include <zephyr/logging/log_backend_std.h>
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
-#define BUFFER_LEN       256
+#define BUFFER_LEN       200
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 static uint8_t hdlc_uart_buffer[BUFFER_LEN];

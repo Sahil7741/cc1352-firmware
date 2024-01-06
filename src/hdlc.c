@@ -22,7 +22,7 @@
 #define HDLC_ESC_FRAME 0x5E
 #define HDLC_ESC_ESC   0x5D
 
-#define HDLC_RX_WORKQUEUE_STACK_SIZE 1024
+#define HDLC_RX_WORKQUEUE_STACK_SIZE 2048
 #define HDLC_RX_WORKQUEUE_PRIORITY   5
 
 static void hdlc_rx_handler(struct k_work *);
@@ -185,6 +185,10 @@ int hdlc_block_send_sync(const uint8_t *buffer, size_t buffer_len, uint8_t addre
 
 int hdlc_init(hdlc_process_frame_callback process_cb, hdlc_send_frame_callback send_cb)
 {
+	const struct k_work_queue_config cfg = {
+		.name = "hdlc_rx_workqueue",
+		.no_yield = false,
+	};
 	hdlc_driver.crc = 0xffff;
 	hdlc_driver.send_seq = 0;
 	hdlc_driver.rx_send_seq = 0;
@@ -196,7 +200,7 @@ int hdlc_init(hdlc_process_frame_callback process_cb, hdlc_send_frame_callback s
 
 	k_work_queue_init(&hdlc_rx_workqueue);
 	k_work_queue_start(&hdlc_rx_workqueue, hdlc_rx_worqueue_stack, HDLC_RX_WORKQUEUE_STACK_SIZE,
-			   HDLC_RX_WORKQUEUE_PRIORITY, NULL);
+			   HDLC_RX_WORKQUEUE_PRIORITY, &cfg);
 
 	return 0;
 }

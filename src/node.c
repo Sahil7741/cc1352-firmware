@@ -13,73 +13,56 @@
 #include <errno.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
+#include "ap.h"
 
-#define MAX_GREYBUS_NODES CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define MAX_GREYBUS_NODES         CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
+#define NODE_RX_THREAD_STACK_SIZE 2048
+#define NODE_RX_THREAD_PRIORITY   6
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct node_control_data {
-	struct in6_addr addr;
-	sys_dlist_t msgs;
 	int sock;
 };
 
 K_MEM_SLAB_DEFINE_STATIC(node_control_data_slab, sizeof(struct node_control_data),
 			 MAX_GREYBUS_NODES, 4);
 
-static sys_dlist_t node_interface_list = SYS_DLIST_STATIC_INIT(&node_interface_list);
-static struct in6_addr node_addr_cache[MAX_GREYBUS_NODES];
-static size_t node_addr_cache_pos;
+struct node_item {
+	int sock;
+	uint8_t id;
+	struct in6_addr addr;
+	struct gb_interface *inf;
+};
 
-static void msgs_drain_all(sys_dlist_t *list)
+/* Node Cache */
+static struct node_item node_cache[MAX_GREYBUS_NODES];
+static size_t node_cache_pos;
+
+static void node_rx_thread_entry(void *p1, void *p2, void *p3);
+
+K_THREAD_DEFINE(node_rx_thread, NODE_RX_THREAD_STACK_SIZE, node_rx_thread_entry, NULL, NULL, NULL,
+		NODE_RX_THREAD_PRIORITY, 0, 0);
+
+static int local_pipe_writer;
+
+static void pipe_send()
 {
-	struct gb_message *msg, *msg_safe;
-
-	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(list, msg, msg_safe, node) {
-		sys_dlist_remove(&msg->node);
-		gb_message_dealloc(msg);
+	const uint8_t temp = 0;
+	int ret = zsock_send(local_pipe_writer, &temp, sizeof(temp), 0);
+	if (ret < 0) {
+		LOG_ERR("Failed to write to pipe %d", errno);
 	}
 }
 
-static void msgs_drain_by_cport(sys_dlist_t *list, uint16_t cport_id)
-{
-	struct gb_message *msg, *msg_safe;
-
-	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(list, msg, msg_safe, node) {
-		if (gb_message_pad_read(msg) == cport_id) {
-			sys_dlist_remove(&msg->node);
-			gb_message_dealloc(msg);
-		}
-	}
-}
-
-static struct gb_message *msgs_find(sys_dlist_t *list, uint16_t cport_id)
-{
-	struct gb_message *msg, *msg_safe;
-
-	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(list, msg, msg_safe, node) {
-		if (gb_message_pad_read(msg) == cport_id) {
-			sys_dlist_remove(&msg->node);
-			return msg;
-		}
-	}
-
-	return NULL;
-}
-
-static int ipaddr_cmp(const struct in6_addr *a, const struct in6_addr *b)
-{
-	return memcmp(a->s6_addr, b->s6_addr, sizeof(struct in6_addr));
-}
-
-static int node_addr_cache_search(const struct in6_addr *addr)
+static int node_cache_find_by_addr(const struct in6_addr *addr)
 {
 	size_t i;
 	int ret;
 
-	for (i = 0; i < node_addr_cache_pos; ++i) {
-		ret = ipaddr_cmp(&node_addr_cache[i], addr);
-		if (!ret) {
+	for (i = 0; i < node_cache_pos; ++i) {
+		ret = net_ipv6_addr_cmp(&node_cache[i].addr, addr);
+		if (ret) {
 			return i;
 		}
 	}
@@ -87,33 +70,65 @@ static int node_addr_cache_search(const struct in6_addr *addr)
 	return -1;
 }
 
-static int node_addr_cache_insert(const struct in6_addr *addr)
-{
-	if (node_addr_cache_pos >= MAX_GREYBUS_NODES) {
-		return -ENOMEM;
-	}
-
-	net_ipaddr_copy(&node_addr_cache[node_addr_cache_pos++], addr);
-	return 0;
-}
-
-static void node_addr_cache_remove_at(size_t pos)
-{
-	--node_addr_cache_pos;
-	if (pos != node_addr_cache_pos) {
-		net_ipaddr_copy(&node_addr_cache[pos], &node_addr_cache[node_addr_cache_pos]);
-	}
-}
-
-static size_t node_addr_cache_remove(const struct in6_addr *addr)
+static int node_cache_find_by_sock(int sock)
 {
 	size_t i;
 
-	for (i = 0; i < node_addr_cache_pos && ipaddr_cmp(&node_addr_cache[i], addr) <= 0; ++i) {
+	for (i = 0; i < node_cache_pos; ++i) {
+		if (node_cache[i].sock == sock) {
+			return i;
+		}
 	}
 
-	node_addr_cache_remove_at(i);
-	return i;
+	return -1;
+}
+
+static int node_cache_find_by_id(uint8_t id)
+{
+	size_t i;
+
+	for (i = 0; i < node_cache_pos; ++i) {
+		if (node_cache[i].id == id) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+static int node_cache_add(int sock, uint8_t id, const struct in6_addr *addr,
+			  struct gb_interface *intf)
+{
+	if (node_cache_pos >= MAX_GREYBUS_NODES) {
+		return -ENOMEM;
+	}
+
+	node_cache[node_cache_pos].sock = sock;
+	node_cache[node_cache_pos].id = id;
+	net_ipaddr_copy(&node_cache[node_cache_pos].addr, addr);
+	node_cache[node_cache_pos].inf = intf;
+
+	node_cache_pos++;
+
+	return 0;
+}
+
+static void node_cache_remove_at(size_t pos)
+{
+	--node_cache_pos;
+	if (pos != node_cache_pos) {
+		memcpy(&node_cache[pos], &node_cache[node_cache_pos], sizeof(struct node_item));
+	}
+}
+
+static int node_cache_remove_by_id(uint8_t id)
+{
+	int ret = node_cache_find_by_id(id);
+	if (ret >= 0) {
+		node_cache_remove_at(ret);
+	}
+
+	return ret;
 }
 
 static int write_data(int sock, const void *data, size_t len)
@@ -182,6 +197,82 @@ early_exit:
 	return NULL;
 }
 
+static void node_rx_thread_entry(void *p1, void *p2, void *p3)
+{
+	struct zsock_pollfd fds[AP_MAX_NODES + 1];
+	size_t i, fds_len = 1;
+	int pipe[2], ret;
+	uint8_t temp;
+	bool flag = false;
+	struct gb_message *msg;
+
+	while (!svc_is_ready()) {
+		k_sleep(K_MSEC(500));
+	}
+
+	ret = zsock_socketpair(AF_UNIX, SOCK_STREAM, 0, pipe);
+	if (ret < 0) {
+		LOG_ERR("Failed to create socketpair %d", errno);
+		return;
+	}
+
+	local_pipe_writer = pipe[1];
+	fds[0].fd = pipe[0];
+
+	while (1) {
+		/* Populate fds */
+		fds[0].events = ZSOCK_POLLIN;
+		for (i = 0; i < node_cache_pos; ++i) {
+			fds[i + 1].fd = node_cache[i].sock;
+			fds[i + 1].events = ZSOCK_POLLIN;
+		}
+		fds_len = node_cache_pos + 1;
+
+		LOG_DBG("Polling for %zu sockets", fds_len - 1);
+		ret = zsock_poll(fds, fds_len, -1);
+		if (ret < 0) {
+			LOG_ERR("Failed to poll");
+			continue;
+		}
+
+		if (fds[0].revents & ZSOCK_POLLIN) {
+			/* Drain the pipe */
+			LOG_DBG("Wakeup by pipe");
+			zsock_recv(fds[0].fd, &temp, sizeof(temp), 0);
+		}
+
+		for (i = 1; i < fds_len; ++i) {
+			if (fds[i].revents & ZSOCK_POLLIN) {
+				/* Read message */
+				ret = node_cache_find_by_sock(fds[i].fd);
+				if (ret < 0) {
+					LOG_ERR("Failed to find node");
+					continue;
+				}
+
+				msg = gb_message_receive(fds[i].fd, &flag);
+				if (flag) {
+					LOG_ERR("Socket closed by peer");
+					svc_send_module_removed(node_cache[ret].id);
+					continue;
+				}
+
+				if (!msg) {
+					LOG_ERR("Failed to get full message");
+					continue;
+				}
+
+				ret = connection_send(node_cache[ret].id, gb_message_pad_read(msg),
+						      msg);
+				if (ret < 0) {
+					LOG_ERR("Failed to send message to AP");
+					continue;
+				}
+			}
+		}
+	}
+}
+
 static int gb_message_send(int sock, const struct gb_message *msg)
 {
 	int ret;
@@ -235,31 +326,44 @@ fail:
 	return ret;
 }
 
-static int node_intf_create_connection(struct gb_controller *ctrl, uint16_t cport_id)
+static int node_intf_create_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
 	struct sockaddr_in6 node_addr;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
+	int ret, sock;
 
 	/* Do not create socket for cports other than 0 */
 	if (cport_id != 0) {
 		return 0;
 	}
 
-	memcpy(&node_addr.sin6_addr, &ctrl_data->addr, sizeof(struct in6_addr));
+	ret = node_cache_find_by_id(ctrl->id);
+	if (ret < 0) {
+		LOG_ERR("Failed to find node %u in cache. This should not happen", ctrl->id);
+		return -EINVAL;
+	}
+
+	memcpy(&node_addr.sin6_addr, &node_cache[ret].addr, sizeof(struct in6_addr));
 	node_addr.sin6_family = AF_INET6;
 	node_addr.sin6_scope_id = 0;
-	node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT + cport_id);
+	node_addr.sin6_port = htons(GB_TRANSPORT_TCPIP_BASE_PORT);
 
-	ctrl_data->sock = connect_to_node((struct sockaddr *)&node_addr);
-	return ctrl_data->sock;
+	sock = connect_to_node((struct sockaddr *)&node_addr);
+	if (sock < 0) {
+		LOG_ERR("Failed to connect to node");
+		return sock;
+	}
+	node_cache[ret].sock = sock;
+	ctrl_data->sock = sock;
+
+	pipe_send();
+
+	return sock;
 }
 
-static void node_intf_destroy_connection(struct gb_controller *ctrl, uint16_t cport_id)
+static void node_intf_destroy_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-
-	/* Cleanup queue */
-	msgs_drain_by_cport(&ctrl_data->msgs, cport_id);
 
 	/* Close socket for cport 0 */
 	if (cport_id == 0) {
@@ -267,50 +371,7 @@ static void node_intf_destroy_connection(struct gb_controller *ctrl, uint16_t cp
 	}
 }
 
-static struct gb_message *node_base_read(int sock, bool *flag)
-{
-	int ret;
-	struct zsock_pollfd fd = {.fd = sock, .events = ZSOCK_POLLIN};
-
-	ret = zsock_poll(&fd, 1, 0);
-	if (ret <= 0 || !(fd.revents & ZSOCK_POLLIN)) {
-		return NULL;
-	}
-
-	return gb_message_receive(fd.fd, flag);
-}
-
-static struct gb_message *node_inf_read(struct gb_controller *ctrl, uint16_t cport_id)
-{
-	bool flag = false;
-	struct gb_message *msg;
-	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-
-	/* return any pending message */
-	if ((msg = msgs_find(&ctrl_data->msgs, cport_id))) {
-		return msg;
-	}
-
-	msg = node_base_read(ctrl_data->sock, &flag);
-	if (flag) {
-		LOG_ERR("Socket of Cport %u closed by Peer Node", cport_id);
-		ctrl->destroy_connection(ctrl, cport_id);
-	}
-
-	if (!msg) {
-		return NULL;
-	}
-
-	/* Add to queue if the message is of different cport */
-	if (gb_message_pad_read(msg) == cport_id) {
-		return msg;
-	}
-
-	sys_dlist_append(&ctrl_data->msgs, &msg->node);
-	return NULL;
-}
-
-static int node_inf_write(struct gb_controller *ctrl, struct gb_message *msg, uint16_t cport_id)
+static int node_inf_write(struct gb_interface *ctrl, struct gb_message *msg, uint16_t cport_id)
 {
 	int ret;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
@@ -334,27 +395,22 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 		goto early_exit;
 	}
 
-	sys_dlist_init(&ctrl_data->msgs);
-	net_ipaddr_copy(&ctrl_data->addr, addr);
-	ret = node_addr_cache_insert(addr);
-	if (ret) {
-		LOG_ERR("Failed to create new node");
+	inf = gb_interface_alloc(node_inf_write, node_intf_create_connection,
+				 node_intf_destroy_connection, ctrl_data);
+	if (!inf) {
+		LOG_ERR("Failed to allocate Greybus interface");
 		goto free_ctrl_data;
 	}
 
-	inf = gb_interface_alloc(node_inf_read, node_inf_write, node_intf_create_connection,
-				 node_intf_destroy_connection, ctrl_data);
-	if (!inf) {
-		goto remove_node;
-	}
-
 	LOG_DBG("Create new interface with ID %u", inf->id);
-	sys_dlist_append(&node_interface_list, &inf->node);
+	ret = node_cache_add(-1, inf->id, addr, inf);
+	if (ret < 0) {
+		LOG_ERR("Failed to add node to cache");
+		goto free_ctrl_data;
+	}
 
 	return inf;
 
-remove_node:
-	node_addr_cache_remove_at(ret);
 free_ctrl_data:
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 early_exit:
@@ -369,28 +425,18 @@ void node_destroy_interface(struct gb_interface *inf)
 		return;
 	}
 
-	ctrl_data = inf->controller.ctrl_data;
+	ctrl_data = inf->ctrl_data;
 
-	sys_dlist_remove(&inf->node);
-
-	msgs_drain_all(&ctrl_data->msgs);
-
-	node_addr_cache_remove(&ctrl_data->addr);
+	node_cache_remove_by_id(inf->id);
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);
 	gb_interface_dealloc(inf);
 }
 
 struct gb_interface *node_find_by_id(uint8_t id)
 {
-	struct gb_interface *inf;
+	int ret = node_cache_find_by_id(id);
 
-	SYS_DLIST_FOR_EACH_CONTAINER(&node_interface_list, inf, node) {
-		if (inf->id == id) {
-			return inf;
-		}
-	}
-
-	return NULL;
+	return (ret >= 0) ? node_cache[ret].inf : NULL;
 }
 
 void node_filter(struct in6_addr *active_addr, size_t active_len)
@@ -400,8 +446,7 @@ void node_filter(struct in6_addr *active_addr, size_t active_len)
 	int ret;
 
 	for (i = 0; i < active_len; ++i) {
-		ret = node_addr_cache_search(&active_addr[i]);
-		LOG_DBG("Old Node: %d", ret);
+		ret = node_cache_find_by_addr(&active_addr[i]);
 
 		/* Handle New Node */
 		if (ret < 0) {
@@ -418,11 +463,13 @@ void node_filter(struct in6_addr *active_addr, size_t active_len)
 
 void node_destroy_all(void)
 {
-	struct gb_interface *inf, *inf_safe;
+	size_t i;
 
-	SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&node_interface_list, inf, inf_safe, node) {
-		node_destroy_interface(inf);
+	for (i = 0; i < node_cache_pos; ++i) {
+		node_destroy_interface(node_cache[i].inf);
 	}
+
+	node_cache_pos = 0;
 
 	assert(!k_mem_slab_num_used_get(&node_control_data_slab));
 }

@@ -9,7 +9,6 @@
 #include "hdlc.h"
 #include "node.h"
 #include "svc.h"
-#include "greybus_connections.h"
 #include "tcp_discovery.h"
 #include <zephyr/drivers/uart.h>
 #include <zephyr/init.h>
@@ -115,8 +114,7 @@ static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 static int control_process_frame(const char *buffer, size_t buffer_len)
 {
 	uint8_t command;
-	struct gb_connection *conn;
-	struct gb_interface *ap, *svc;
+	int ret;
 
 	if (buffer_len != 1) {
 		LOG_ERR("Invalid Buffer");
@@ -126,23 +124,27 @@ static int control_process_frame(const char *buffer, size_t buffer_len)
 	command = buffer[0];
 
 	switch (command) {
-	case CONTROL_SVC_START:
+	case CONTROL_SVC_START: {
 		LOG_INF("Starting SVC");
-		ap = ap_init();
-		svc = svc_init();
-		conn = gb_connection_create(ap, svc, 0, 0);
+		ap_init();
+		svc_init();
+		apbridge_init();
+		ret = connection_create(AP_INF_ID, 0, SVC_INF_ID, 0);
+		if (ret < 0) {
+			LOG_ERR("Failed to create connection between AP and SVC");
+			return ret;
+		}
 		svc_send_version();
-		apbridge_start();
 		tcp_discovery_start();
 		return 0;
+	}
 	case CONTROL_SVC_STOP:
 		LOG_INF("Stopping SVC");
 		tcp_discovery_stop();
-		gb_connection_destroy_all();
 		node_destroy_all();
 		svc_deinit();
 		ap_deinit();
-		apbridge_stop();
+		apbridge_deinit();
 		return 0;
 	}
 
@@ -170,7 +172,6 @@ void main(void)
 
 	LOG_INF("Starting BeaglePlay Greybus");
 	tcp_discovery_stop();
-	apbridge_stop();
 
 	if (!device_is_ready(uart_dev)) {
 		LOG_ERR("UART device not found!");

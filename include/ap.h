@@ -6,6 +6,7 @@
 #ifndef _AP_H_
 #define _AP_H_
 
+#include "apbridge.h"
 #include "greybus_messages.h"
 #include "greybus_interfaces.h"
 
@@ -19,7 +20,7 @@
  *
  * @return AP Interface
  */
-struct gb_interface *ap_init(void);
+void ap_init(void);
 
 /*
  * De-Initialize AP Interface
@@ -37,13 +38,11 @@ void ap_deinit(void);
  *
  * @return 0 if successful, negative in case of error
  */
-int ap_rx_submit(struct gb_message *msg, uint16_t cport_id);
+static inline int ap_rx_submit(struct gb_message *msg, uint16_t cport_id)
+{
+	return connection_send(AP_INF_ID, cport_id, msg);
+}
 
-/*
- * Get AP Interface
- *
- * @return AP Interface
- */
-struct gb_interface *ap_interface(void);
+int ap_send(struct gb_message *msg, uint16_t cport);
 
 #endif

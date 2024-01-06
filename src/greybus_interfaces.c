@@ -31,8 +31,7 @@ static uint8_t new_interface_id(void)
 	return temp;
 }
 
-struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
-					gb_controller_write_callback_t write_cb,
+struct gb_interface *gb_interface_alloc(gb_controller_write_callback_t write_cb,
 					gb_controller_create_connection_t create_connection,
 					gb_controller_destroy_connection_t destroy_connection,
 					void *ctrl_data)
@@ -46,12 +45,10 @@ struct gb_interface *gb_interface_alloc(gb_controller_read_callback_t read_cb,
 	}
 
 	intf->id = new_interface_id();
-	intf->controller.read = read_cb;
-	intf->controller.write = write_cb;
-	intf->controller.create_connection = create_connection;
-	intf->controller.destroy_connection = destroy_connection;
-	intf->controller.ctrl_data = ctrl_data;
-	sys_dnode_init(&intf->node);
+	intf->write = write_cb;
+	intf->create_connection = create_connection;
+	intf->destroy_connection = destroy_connection;
+	intf->ctrl_data = ctrl_data;
 
 	return intf;
 }
@@ -66,8 +63,6 @@ struct gb_interface *gb_interface_find_by_id(uint8_t intf_id)
 	switch (intf_id) {
 	case SVC_INF_ID:
 		return svc_interface();
-	case AP_INF_ID:
-		return ap_interface();
 	case LOCAL_NODE_ID:
 		return local_node_interface();
 	default:

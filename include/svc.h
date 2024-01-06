@@ -15,7 +15,7 @@
  * Initialize SVC Interface. Should be called before sending any greybus
  * request.
  */
-struct gb_interface *svc_init(void);
+void svc_init(void);
 
 /*
  * Create SVC_TYPE_VERSION greybus message and queue it for sending.
@@ -53,5 +53,7 @@ struct gb_interface *svc_interface(void);
  * De-Initialize SVC
  */
 void svc_deinit(void);
+
+bool svc_is_ready(void);
 
 #endif
