@@ -153,33 +153,6 @@ static inline struct gb_message *gb_message_response_alloc(const void *payload, 
 	return msg;
 }
 
-/*
- * Get the greybus message padding as u16. This is useful when cport information is stored in pad
- * bytes
- *
- * @param greybus message
- *
- * @return greybus message pad
- */
-static inline uint16_t gb_message_pad_read(const struct gb_message *msg)
-{
-	uint16_t pad;
-	memcpy(&pad, msg->header.pad, sizeof(pad));
-	return sys_le16_to_cpu(pad);
-}
-
-/*
- * Write u16 to greybus message header padding. This is useful when cport information is stored in
- * pad bytes.
- *
- * @param greybus message
- * @param u16 to write to pad
- */
-static inline void gb_message_pad_write(struct gb_message *msg, uint16_t pad)
-{
-	memcpy(msg->header.pad, &sys_cpu_to_le16(pad), sizeof(pad));
-}
-
 static inline uint8_t gb_message_type(const struct gb_message *msg)
 {
 	return msg->header.type;

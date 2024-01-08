@@ -21,6 +21,11 @@
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
+struct gb_message_in_transport {
+	uint16_t cport_id;
+	struct gb_message *msg;
+};
+
 struct node_control_data {
 	int sock;
 };
@@ -164,27 +169,33 @@ static int read_data(int sock, void *data, size_t len)
 	return received;
 }
 
-static struct gb_message *gb_message_receive(int sock, bool *flag)
+static struct gb_message_in_transport gb_message_receive(int sock, bool *flag)
 {
 	int ret;
 	struct gb_operation_msg_hdr hdr;
-	struct gb_message *msg;
+	struct gb_message_in_transport msg;
 
-	ret = read_data(sock, &hdr, sizeof(struct gb_operation_msg_hdr));
-	if (ret != sizeof(struct gb_operation_msg_hdr)) {
+	ret = read_data(sock, &msg.cport_id, sizeof(uint16_t));
+	if (ret != sizeof(uint16_t)) {
+		*flag = ret == 0;
+		goto early_exit;
+	}
+	msg.cport_id = sys_le16_to_cpu(msg.cport_id);
+
+	ret = read_data(sock, &hdr, sizeof(hdr));
+	if (ret != sizeof(hdr)) {
 		*flag = ret == 0;
 		goto early_exit;
 	}
 
-	msg = gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.id, hdr.status);
-	if (!msg) {
+	msg.msg = gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.id, hdr.status);
+	if (!msg.msg) {
 		LOG_ERR("Failed to allocate node message");
 		goto early_exit;
 	}
 
-	memcpy(msg->header.pad, hdr.pad, sizeof(uint16_t));
-	ret = read_data(sock, msg->payload, gb_message_payload_len(msg));
-	if (ret != gb_message_payload_len(msg)) {
+	ret = read_data(sock, msg.msg->payload, gb_message_payload_len(msg.msg));
+	if (ret != gb_message_payload_len(msg.msg)) {
 		*flag = ret == 0;
 		goto free_msg;
 	}
@@ -192,9 +203,11 @@ static struct gb_message *gb_message_receive(int sock, bool *flag)
 	return msg;
 
 free_msg:
-	gb_message_dealloc(msg);
+	gb_message_dealloc(msg.msg);
 early_exit:
-	return NULL;
+	msg.cport_id = 0;
+	msg.msg = NULL;
+	return msg;
 }
 
 static void node_rx_thread_entry(void *p1, void *p2, void *p3)
@@ -204,7 +217,7 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 	int pipe[2], ret;
 	uint8_t temp;
 	bool flag = false;
-	struct gb_message *msg;
+	struct gb_message_in_transport msg;
 
 	while (!svc_is_ready()) {
 		k_sleep(K_MSEC(500));
@@ -257,13 +270,12 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 					continue;
 				}
 
-				if (!msg) {
+				if (!msg.msg) {
 					LOG_ERR("Failed to get full message");
 					continue;
 				}
 
-				ret = connection_send(node_cache[ret].id, gb_message_pad_read(msg),
-						      msg);
+				ret = connection_send(node_cache[ret].id, msg.cport_id, msg.msg);
 				if (ret < 0) {
 					LOG_ERR("Failed to send message to AP");
 					continue;
@@ -273,9 +285,16 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 	}
 }
 
-static int gb_message_send(int sock, const struct gb_message *msg)
+static int gb_message_send(int sock, const struct gb_message *msg, uint16_t cport)
 {
 	int ret;
+	uint16_t cport_le = sys_cpu_to_le16(cport);
+
+	ret = write_data(sock, &cport_le, sizeof(uint16_t));
+	if (ret != sizeof(uint16_t)) {
+		LOG_ERR("Failed to send CPort ID to node");
+		goto early_exit;
+	}
 
 	ret = write_data(sock, &msg->header, sizeof(struct gb_operation_msg_hdr));
 	if (ret != sizeof(struct gb_operation_msg_hdr)) {
@@ -376,8 +395,7 @@ static int node_inf_write(struct gb_interface *ctrl, struct gb_message *msg, uin
 	int ret;
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
-	gb_message_pad_write(msg, cport_id);
-	ret = gb_message_send(ctrl_data->sock, msg);
+	ret = gb_message_send(ctrl_data->sock, msg, cport_id);
 	gb_message_dealloc(msg);
 
 	return ret;
