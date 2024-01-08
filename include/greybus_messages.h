@@ -7,7 +7,6 @@
 #define _GREYBUS_MESSAGES_H_
 
 #include <zephyr/types.h>
-#include <zephyr/sys/dlist.h>
 #include <zephyr/sys/byteorder.h>
 #include "greybus_protocol.h"
 #include <string.h>
@@ -15,14 +14,11 @@
 /*
  * Struct to represent greybus message. This is a variable sized type.
  *
- * @param fifo_reserved: reserved for fifo
  * @param header: greybus msg header.
  * @param payload_size: size of payload in bytes
  * @param payload: heap allocated payload.
  */
 struct gb_message {
-	void *fifo_reserved;
-	sys_dnode_t node;
 	struct gb_operation_msg_hdr header;
 	uint8_t payload[];
 };
