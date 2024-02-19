@@ -18,6 +18,7 @@
 #define MAX_GREYBUS_NODES         CONFIG_BEAGLEPLAY_GREYBUS_MAX_NODES
 #define NODE_RX_THREAD_STACK_SIZE 2048
 #define NODE_RX_THREAD_PRIORITY   6
+#define RETRIES                   3
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
@@ -38,6 +39,7 @@ struct node_item {
 	uint8_t id;
 	struct in6_addr addr;
 	struct gb_interface *inf;
+	uint8_t fail_count;
 };
 
 /* Node Cache */
@@ -112,6 +114,7 @@ static int node_cache_add(int sock, uint8_t id, const struct in6_addr *addr,
 	node_cache[node_cache_pos].id = id;
 	net_ipaddr_copy(&node_cache[node_cache_pos].addr, addr);
 	node_cache[node_cache_pos].inf = intf;
+	node_cache[node_cache_pos].fail_count = 0;
 
 	node_cache_pos++;
 
@@ -157,12 +160,9 @@ static int read_data(int sock, void *data, size_t len)
 
 	while (received < len) {
 		ret = zsock_recv(sock, received + (char *)data, len - received, 0);
-		if (ret < 0) {
+		if (ret <= 0) {
 			LOG_ERR("Failed to receive data");
 			return ret;
-		} else if (ret == 0) {
-			/* Socket was closed by peer */
-			return 0;
 		}
 		received += ret;
 	}
@@ -255,13 +255,28 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 		}
 
 		for (i = 1; i < fds_len; ++i) {
-			if (fds[i].revents & ZSOCK_POLLIN) {
-				/* Read message */
-				ret = node_cache_find_by_sock(fds[i].fd);
-				if (ret < 0) {
-					LOG_ERR("Failed to find node");
-					continue;
+			ret = node_cache_find_by_sock(fds[i].fd);
+			/* Read message */
+			if (ret < 0) {
+				LOG_ERR("Failed to find node");
+				continue;
+			}
+
+			if (fds[i].revents & ZSOCK_POLLNVAL) {
+				LOG_WRN("Socket invalid");
+				svc_send_module_removed(node_cache[i - 1].inf);
+			} else if (fds[i].revents & ZSOCK_POLLHUP) {
+				LOG_WRN("Socket pollhup");
+				svc_send_module_removed(node_cache[i - 1].inf);
+			} else if (fds[i].revents & ZSOCK_POLLERR) {
+				LOG_WRN("Socket error");
+				node_cache[ret].fail_count++;
+				if (node_cache[ret].fail_count > RETRIES) {
+					LOG_ERR("Node failed to respond. Removing node");
+					svc_send_module_removed(node_cache[i - 1].inf);
 				}
+			} else if (fds[i].revents & ZSOCK_POLLIN) {
+				node_cache[ret].fail_count = 0;
 
 				msg = gb_message_receive(fds[i].fd, &flag);
 				if (flag) {
@@ -272,6 +287,7 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 
 				if (!msg.msg) {
 					LOG_ERR("Failed to get full message");
+					svc_send_module_removed(node_cache[ret].inf);
 					continue;
 				}
 

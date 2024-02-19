@@ -325,6 +325,8 @@ static void svc_connection_destroy_handler(struct gb_message *msg)
 	struct gb_svc_conn_destroy_request *req =
 		(struct gb_svc_conn_destroy_request *)msg->payload;
 
+	LOG_DBG("Destroy connection between Intf %u, Cport %u and Intf %u, Cport %u", req->intf1_id,
+		req->cport1_id, req->intf2_id, req->cport2_id);
 	ret = connection_destroy(req->intf1_id, req->cport1_id, req->intf2_id, req->cport2_id);
 	if (ret < 0) {
 		LOG_ERR("Failed to destroy connection %d between Cport 1: %u of Interface 1: %u "

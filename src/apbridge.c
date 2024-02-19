@@ -136,12 +136,10 @@ int connection_destroy(uint8_t intf1_id, uint16_t intf1_cport, uint8_t intf2_id,
 	}
 
 	intf = gb_interface_find_by_id(node_id);
-	if (!intf) {
-		LOG_ERR("Failed to find node interface");
-		return -EINVAL;
+	/* Ignore if intf has already been cleaned up */
+	if (intf) {
+		intf->destroy_connection(intf, node_cport);
 	}
-
-	intf->destroy_connection(intf, node_cport);
 
 	node_ap_remove(ap_cport);
 
