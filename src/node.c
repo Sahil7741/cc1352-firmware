@@ -384,9 +384,11 @@ static void node_intf_destroy_connection(struct gb_interface *ctrl, uint16_t cpo
 {
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
-	/* Close socket for cport 0 */
+	/* Close socket for cport 0, and remove node so that it can be rediscovered */
 	if (cport_id == 0) {
 		zsock_close(ctrl_data->sock);
+		node_cache_remove_by_id(ctrl->id);
+		node_destroy_interface(ctrl);
 	}
 }
 
