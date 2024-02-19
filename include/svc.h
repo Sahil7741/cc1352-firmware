@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <zephyr/types.h>
+#include "greybus_interfaces.h"
 
 #define SVC_INF_ID 0
 
@@ -40,7 +41,7 @@ int svc_send_module_inserted(uint8_t intf_id);
  *
  * @return 0 if successfully, negative in case of error
  */
-int svc_send_module_removed(uint8_t intf_id);
+int svc_send_module_removed(struct gb_interface *intf);
 
 /*
  * Get the SVC interface

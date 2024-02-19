@@ -266,7 +266,7 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 				msg = gb_message_receive(fds[i].fd, &flag);
 				if (flag) {
 					LOG_ERR("Socket closed by peer");
-					svc_send_module_removed(node_cache[ret].id);
+					svc_send_module_removed(node_cache[ret].inf);
 					continue;
 				}
 
@@ -382,13 +382,9 @@ static int node_intf_create_connection(struct gb_interface *ctrl, uint16_t cport
 
 static void node_intf_destroy_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
-	struct node_control_data *ctrl_data = ctrl->ctrl_data;
-
-	/* Close socket for cport 0, and remove node so that it can be rediscovered */
+	/* Treat this as if node has been removed */
 	if (cport_id == 0) {
-		zsock_close(ctrl_data->sock);
-		node_cache_remove_by_id(ctrl->id);
-		node_destroy_interface(ctrl);
+		svc_send_module_removed(ctrl);
 	}
 }
 
@@ -446,6 +442,10 @@ void node_destroy_interface(struct gb_interface *inf)
 	}
 
 	ctrl_data = inf->ctrl_data;
+
+	if (ctrl_data->sock >= 0) {
+		zsock_close(ctrl_data->sock);
+	}
 
 	node_cache_remove_by_id(inf->id);
 	k_mem_slab_free(&node_control_data_slab, (void **)&ctrl_data);

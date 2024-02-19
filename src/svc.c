@@ -24,17 +24,6 @@ LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 ATOMIC_DEFINE(svc_is_read_flag, 1);
 
-static sys_dlist_t operations_list = SYS_DLIST_STATIC_INIT(&operations_list);
-
-struct svc_module_removed_map_item {
-	uint16_t opr_id;
-	uint8_t intf_id;
-	sys_dnode_t node;
-};
-
-K_MEM_SLAB_DEFINE_STATIC(svc_module_removed_map, sizeof(struct svc_module_removed_map_item),
-			 MAX_GREYBUS_NODES, 4);
-
 static int svc_inf_write(struct gb_interface *, struct gb_message *, uint16_t);
 
 static int svc_inf_create_connection(struct gb_interface *ctrl, uint16_t cport_id)
@@ -369,25 +358,8 @@ static void svc_module_inserted_response_handler(struct gb_message *msg)
 
 static void svc_module_removed_response_handler(struct gb_message *msg)
 {
-	struct svc_module_removed_map_item *item, *item_safe;
-	struct gb_interface *intf;
-
-	if (gb_message_is_success(msg)) {
-		SYS_DLIST_FOR_EACH_CONTAINER_SAFE(&operations_list, item, item_safe, node) {
-			if (msg->header.id == item->opr_id) {
-				sys_dlist_remove(&item->node);
-				intf = gb_interface_find_by_id(item->intf_id);
-				if (!intf) {
-					LOG_ERR("Failed to find the removed interface");
-				}
-
-				/* I think that AP should destroy any connections left but not sure
-				 */
-				node_destroy_interface(intf);
-				k_mem_slab_free(&svc_module_removed_map, (void **)&item);
-				break;
-			}
-		}
+	if (!gb_message_is_success(msg)) {
+		LOG_DBG("Module Removal Failed");
 	}
 }
 
@@ -473,22 +445,17 @@ int svc_send_module_inserted(uint8_t primary_intf_id)
 				    GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
 }
 
-int svc_send_module_removed(uint8_t intf_id)
+int svc_send_module_removed(struct gb_interface *intf)
 {
 	int ret;
-	struct svc_module_removed_map_item *item;
-
-	struct gb_svc_module_removed_request req = {.primary_intf_id = intf_id};
+	struct gb_svc_module_removed_request req = {.primary_intf_id = sys_cpu_to_le16(intf->id)};
 
 	ret = control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED_REQUEST);
 	if (ret < 0) {
 		return ret;
 	}
 
-	k_mem_slab_alloc(&svc_module_removed_map, (void **)&item, K_NO_WAIT);
-	item->intf_id = intf_id;
-	item->opr_id = ret;
-	sys_dlist_append(&operations_list, &item->node);
+	node_destroy_interface(intf);
 
 	return ret;
 }
