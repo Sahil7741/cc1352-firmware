@@ -4,7 +4,6 @@
  */
 
 #include "greybus_interfaces.h"
-#include "ap.h"
 #include "local_node.h"
 #include "node.h"
 #include "svc.h"
