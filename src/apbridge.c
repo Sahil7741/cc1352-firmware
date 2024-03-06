@@ -5,16 +5,16 @@
 
 #include "ap.h"
 #include "apbridge.h"
+#include "greybus_interfaces.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include "greybus_interfaces.h"
 
 LOG_MODULE_DECLARE(cc1352_greybus, CONFIG_BEAGLEPLAY_GREYBUS_LOG_LEVEL);
 
 struct node_ap_item {
-	uint8_t node_id;
-	uint16_t node_cport;
 	struct gb_interface *node_intf;
+	uint16_t node_cport;
+	uint8_t node_id;
 };
 
 static struct node_ap_item node_ap_map[AP_MAX_NODES] = {0};
@@ -136,12 +136,10 @@ int connection_destroy(uint8_t intf1_id, uint16_t intf1_cport, uint8_t intf2_id,
 	}
 
 	intf = gb_interface_find_by_id(node_id);
-	if (!intf) {
-		LOG_ERR("Failed to find node interface");
-		return -EINVAL;
+	/* Ignore if intf has already been cleaned up */
+	if (intf) {
+		intf->destroy_connection(intf, node_cport);
 	}
-
-	intf->destroy_connection(intf, node_cport);
 
 	node_ap_remove(ap_cport);
 

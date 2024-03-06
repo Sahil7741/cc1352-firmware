@@ -38,6 +38,7 @@ struct node_item {
 	uint8_t id;
 	struct in6_addr addr;
 	struct gb_interface *inf;
+	uint8_t fail_count;
 };
 
 /* Node Cache */
@@ -112,6 +113,7 @@ static int node_cache_add(int sock, uint8_t id, const struct in6_addr *addr,
 	node_cache[node_cache_pos].id = id;
 	net_ipaddr_copy(&node_cache[node_cache_pos].addr, addr);
 	node_cache[node_cache_pos].inf = intf;
+	node_cache[node_cache_pos].fail_count = 0;
 
 	node_cache_pos++;
 
@@ -157,12 +159,9 @@ static int read_data(int sock, void *data, size_t len)
 
 	while (received < len) {
 		ret = zsock_recv(sock, received + (char *)data, len - received, 0);
-		if (ret < 0) {
+		if (ret <= 0) {
 			LOG_ERR("Failed to receive data");
 			return ret;
-		} else if (ret == 0) {
-			/* Socket was closed by peer */
-			return 0;
 		}
 		received += ret;
 	}
@@ -210,6 +209,17 @@ early_exit:
 	return msg;
 }
 
+static void svc_send_module_removed_by_sock(int sock)
+{
+	int ret = node_cache_find_by_sock(sock);
+	if (ret < 0) {
+		LOG_ERR("Failed to find node");
+		return;
+	}
+
+	svc_send_module_removed(node_cache[ret].inf);
+}
+
 static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 {
 	struct zsock_pollfd fds[AP_MAX_NODES + 1];
@@ -255,8 +265,16 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 		}
 
 		for (i = 1; i < fds_len; ++i) {
-			if (fds[i].revents & ZSOCK_POLLIN) {
-				/* Read message */
+			if (fds[i].revents & ZSOCK_POLLNVAL) {
+				LOG_WRN("Socket invalid");
+				svc_send_module_removed_by_sock(fds[i].fd);
+			} else if (fds[i].revents & ZSOCK_POLLHUP) {
+				LOG_WRN("Socket pollhup");
+				svc_send_module_removed_by_sock(fds[i].fd);
+			} else if (fds[i].revents & ZSOCK_POLLERR) {
+				LOG_WRN("Socket error");
+				svc_send_module_removed_by_sock(fds[i].fd);
+			} else if (fds[i].revents & ZSOCK_POLLIN) {
 				ret = node_cache_find_by_sock(fds[i].fd);
 				if (ret < 0) {
 					LOG_ERR("Failed to find node");
@@ -272,6 +290,7 @@ static void node_rx_thread_entry(void *p1, void *p2, void *p3)
 
 				if (!msg.msg) {
 					LOG_ERR("Failed to get full message");
+					svc_send_module_removed(node_cache[ret].inf);
 					continue;
 				}
 
@@ -311,6 +330,7 @@ static int gb_message_send(int sock, const struct gb_message *msg, uint16_t cpor
 	return 0;
 
 early_exit:
+	svc_send_module_removed_by_sock(sock);
 	return ret;
 }
 
@@ -356,6 +376,12 @@ static int node_intf_create_connection(struct gb_interface *ctrl, uint16_t cport
 		return 0;
 	}
 
+	/* It is possible for cport 0 to be disconnected. Since we are not closing the tcp socket,
+	 * do not recreate an existing socket */
+	if (ctrl_data->sock >= 0) {
+		return ctrl_data->sock;
+	}
+
 	ret = node_cache_find_by_id(ctrl->id);
 	if (ret < 0) {
 		LOG_ERR("Failed to find node %u in cache. This should not happen", ctrl->id);
@@ -382,10 +408,7 @@ static int node_intf_create_connection(struct gb_interface *ctrl, uint16_t cport
 
 static void node_intf_destroy_connection(struct gb_interface *ctrl, uint16_t cport_id)
 {
-	/* Treat this as if node has been removed */
-	if (cport_id == 0) {
-		svc_send_module_removed(ctrl);
-	}
+	/* Do Nothing */
 }
 
 static int node_inf_write(struct gb_interface *ctrl, struct gb_message *msg, uint16_t cport_id)
@@ -394,6 +417,10 @@ static int node_inf_write(struct gb_interface *ctrl, struct gb_message *msg, uin
 	struct node_control_data *ctrl_data = ctrl->ctrl_data;
 
 	ret = gb_message_send(ctrl_data->sock, msg, cport_id);
+	if (ret < 0) {
+		LOG_ERR("Socket seems closed");
+		svc_send_module_removed(ctrl);
+	}
 	gb_message_dealloc(msg);
 
 	return ret;
@@ -410,6 +437,8 @@ static struct gb_interface *node_create_interface(struct in6_addr *addr)
 		LOG_ERR("Failed to allocate Greybus connection");
 		goto early_exit;
 	}
+
+	ctrl_data->sock = -1;
 
 	inf = gb_interface_alloc(node_inf_write, node_intf_create_connection,
 				 node_intf_destroy_connection, ctrl_data);
