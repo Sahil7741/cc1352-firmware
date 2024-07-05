@@ -18,4 +18,4 @@ void tcp_discovery_start(void);
  */
 void tcp_discovery_stop(void);
 
-#endif
+#endif // _TCP_DISCOVERY_H_

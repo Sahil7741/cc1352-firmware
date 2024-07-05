@@ -20,6 +20,13 @@ config BEAGLEPLAY_GREYBUS_MAX_CPORTS
 	int "Maximum number of Cports supported by SVC"
 	default 32
 
+config BEAGLEPLAY_GREYBUS_MDNS_DISCOVERY
+	bool "Enable mdns based node discovery"
+	default y
+
+config BEAGLEPLAY_GREYBUS_NODE1
+	string "Address of Node1"
+
 module = BEAGLEPLAY_GREYBUS
 module-str = beagleplay_greybus
 source "subsys/logging/Kconfig.template.log_config"
