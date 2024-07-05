@@ -1,0 +1,19 @@
+# Copyright (c) 2024 Ayush Singh <ayush@beagleboard.org>
+# SPDX-License-Identifier: Apache-2.0
+
+manifest:
+  self:
+    west-commands: scripts/west-commands.yml
+
+  remotes:
+    - name: ayush
+      url-base: https://openbeagle.org/ayush1325
+
+  projects:
+    - name: zephyr
+      remote: ayush
+      revision: bct-2
+      import:
+        name-allowlist:
+          - hal_ti
+          - cmsis
