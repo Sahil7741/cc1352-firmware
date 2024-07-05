@@ -1,21 +1,16 @@
-image: zephyrprojectrtos/zephyr-build:v0.24.7
-
-variables:
-  BEAGLE_SDK: "/builds/beagleconnect/sdk"
-  ZEPHYR_BASE: "$BEAGLE_SDK/zephyr"
+image: zephyrprojectrtos/zephyr-build:v0.26.13
 
 build:
   stage: build
   before_script:
-    - rm -rf $BEAGLE_SDK
-    - west init -m https://git.beagleboard.org/beagleconnect/zephyr/zephyr --mr sdk-next $BEAGLE_SDK
-    - cd $BEAGLE_SDK
+    - rm -rf ../.west
+    - west init -l .
     - west update
     - west zephyr-export
-    - pip3 install -r zephyr/scripts/requirements-base.txt
+    - pip3 install -r ../zephyr/scripts/requirements-base.txt
   script:
-    - cd $CI_PROJECT_DIR
-    - $ZEPHYR_BASE/ci-build-and-copy.sh freedom cc1352-firmware beagleplay_cc1352 $CI_PROJECT_DIR
+    - source ../zephyr/zephyr-env.sh
+    - west build -b beagleplay_cc1352 . -p
   artifacts:
     paths:
-      - build
+      - build/zephyr/zephyr.bin
