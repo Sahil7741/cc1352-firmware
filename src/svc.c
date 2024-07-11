@@ -8,7 +8,7 @@
 #include "local_node.h"
 #include "svc.h"
 #include "ap.h"
-#include "greybus_protocol.h"
+#include "greybus_protocols.h"
 #include "greybus_messages.h"
 #include "node.h"
 #include <zephyr/sys/dlist.h>
@@ -52,108 +52,6 @@ static struct gb_interface intf = {.id = SVC_INF_ID,
 				   .destroy_connection = svc_inf_destroy_connection,
 				   .ctrl_data = NULL};
 
-struct gb_svc_intf_resume_response {
-	uint8_t status;
-} __packed;
-
-struct gb_svc_conn_destroy_request {
-	uint8_t intf1_id;
-	uint16_t cport1_id;
-	uint8_t intf2_id;
-	uint16_t cport2_id;
-} __packed;
-
-struct gb_svc_conn_create_request {
-	uint8_t intf1_id;
-	uint16_t cport1_id;
-	uint8_t intf2_id;
-	uint16_t cport2_id;
-	uint8_t tc;
-	uint8_t flags;
-} __packed;
-
-struct gb_svc_dme_peer_set_response {
-	uint16_t result_code;
-} __packed;
-
-struct gb_svc_dme_peer_get_response {
-	uint16_t result_code;
-	uint32_t attr_value;
-} __packed;
-
-struct gb_svc_intf_activate_response {
-	uint8_t status;
-	uint8_t intf_type;
-} __packed;
-
-struct gb_svc_intf_unipro_response {
-	uint8_t result_code;
-} __packed;
-
-struct gb_svc_intf_refclk_response {
-	uint8_t result_code;
-} __packed;
-
-struct gb_svc_intf_vsys_response {
-	uint8_t result_code;
-} __packed;
-
-struct gb_svc_module_inserted_request {
-	uint8_t primary_intf_id;
-	uint8_t intf_count;
-	uint16_t flags;
-} __packed;
-
-struct gb_svc_module_removed_request {
-	uint8_t primary_intf_id;
-} __packed;
-
-struct gb_svc_version_request {
-	uint8_t major;
-	uint8_t minor;
-} __packed;
-
-/* SVC protocol hello request */
-struct gb_svc_hello_request {
-	uint16_t endo_id;
-	uint8_t interface_id;
-} __packed;
-
-struct gb_svc_pwrmon_rail_count_get_response {
-	uint8_t rail_count;
-} __packed;
-
-struct gb_svc_l2_timer_cfg {
-	uint16_t tsb_fc0_protection_timeout;
-	uint16_t tsb_tc0_replay_timeout;
-	uint16_t tsb_afc0_req_timeout;
-	uint16_t tsb_fc1_protection_timeout;
-	uint16_t tsb_tc1_replay_timeout;
-	uint16_t tsb_afc1_req_timeout;
-	uint16_t reserved_for_tc2[3];
-	uint16_t reserved_for_tc3[3];
-} __packed;
-
-struct gb_svc_intf_set_pwrm_request {
-	uint8_t intf_id;
-	uint8_t hs_series;
-	uint8_t tx_mode;
-	uint8_t tx_gear;
-	uint8_t tx_nlanes;
-	uint8_t tx_amplitude;
-	uint8_t tx_hs_equalizer;
-	uint8_t rx_mode;
-	uint8_t rx_gear;
-	uint8_t rx_nlanes;
-	uint8_t flags;
-	uint32_t quirks;
-	struct gb_svc_l2_timer_cfg local_l2timerdata, remote_l2timerdata;
-} __packed;
-
-struct gb_svc_intf_set_pwrm_response {
-	uint8_t result_code;
-} __packed;
-
 static int control_send_request(void *payload, size_t payload_len, uint8_t request_type)
 {
 	int ret;
@@ -170,7 +68,7 @@ static int control_send_request(void *payload, size_t payload_len, uint8_t reque
 		return ret;
 	}
 
-	return msg->header.id;
+	return msg->header.operation_id;
 }
 
 static int svc_send_hello(void)
@@ -178,7 +76,7 @@ static int svc_send_hello(void)
 	struct gb_svc_hello_request req = {.endo_id = ENDO_ID, .interface_id = AP_INF_ID};
 
 	return control_send_request(&req, sizeof(struct gb_svc_hello_request),
-				    GB_SVC_TYPE_HELLO_REQUEST);
+				    GB_SVC_TYPE_SVC_HELLO);
 }
 
 static void svc_response_helper(struct gb_message *msg, const void *payload, size_t payload_len,
@@ -186,7 +84,7 @@ static void svc_response_helper(struct gb_message *msg, const void *payload, siz
 {
 	int ret;
 	struct gb_message *resp = gb_message_response_alloc(payload, payload_len, msg->header.type,
-							    msg->header.id, status);
+							    msg->header.operation_id, status);
 	if (resp == NULL) {
 		LOG_ERR("Failed to allocate response for %X", msg->header.type);
 		return;
@@ -368,58 +266,58 @@ static void svc_module_removed_response_handler(struct gb_message *msg)
 static void gb_handle_msg(struct gb_message *msg)
 {
 	switch (gb_message_type(msg)) {
-	case GB_SVC_TYPE_INTF_DEVICE_ID_REQUEST:
-	case GB_SVC_TYPE_ROUTE_CREATE_REQUEST:
-	case GB_SVC_TYPE_ROUTE_DESTROY_REQUEST:
-	case GB_SVC_TYPE_PING_REQUEST:
+	case GB_SVC_TYPE_INTF_DEVICE_ID:
+	case GB_SVC_TYPE_ROUTE_CREATE:
+	case GB_SVC_TYPE_ROUTE_DESTROY:
+	case GB_SVC_TYPE_PING:
 		svc_empty_request_handler(msg);
 		break;
-	case GB_SVC_TYPE_CONN_CREATE_REQUEST:
+	case GB_SVC_TYPE_CONN_CREATE:
 		svc_connection_create_handler(msg);
 		break;
-	case GB_SVC_TYPE_CONN_DESTROY_REQUEST:
+	case GB_SVC_TYPE_CONN_DESTROY:
 		svc_connection_destroy_handler(msg);
 		break;
-	case GB_SVC_TYPE_DME_PEER_GET_REQUEST:
+	case GB_SVC_TYPE_DME_PEER_GET:
 		svc_dme_peer_get_handler(msg);
 		break;
-	case GB_SVC_TYPE_DME_PEER_SET_REQUEST:
+	case GB_SVC_TYPE_DME_PEER_SET:
 		svc_dme_peer_set_handler(msg);
 		break;
-	case GB_SVC_TYPE_INTF_SET_PWRM_REQUEST:
+	case GB_SVC_TYPE_INTF_SET_PWRM:
 		svc_intf_set_pwrm_handler(msg);
 		break;
-	case GB_SVC_TYPE_PWRMON_RAIL_COUNT_GET_REQUEST:
+	case GB_SVC_TYPE_PWRMON_RAIL_COUNT_GET:
 		svc_pwrm_get_rail_count_handler(msg);
 		break;
-	case GB_SVC_TYPE_INTF_VSYS_ENABLE_REQUEST:
-	case GB_SVC_TYPE_INTF_VSYS_DISABLE_REQUEST:
+	case GB_SVC_TYPE_INTF_VSYS_ENABLE:
+	case GB_SVC_TYPE_INTF_VSYS_DISABLE:
 		svc_intf_vsys_enable_disable_handler(msg);
 		break;
-	case GB_SVC_TYPE_INTF_REFCLK_ENABLE_REQUEST:
-	case GB_SVC_TYPE_INTF_REFCLK_DISABLE_REQUEST:
+	case GB_SVC_TYPE_INTF_REFCLK_ENABLE:
+	case GB_SVC_TYPE_INTF_REFCLK_DISABLE:
 		svc_interface_refclk_enable_disable_handler(msg);
 		break;
-	case GB_SVC_TYPE_INTF_UNIPRO_ENABLE_REQUEST:
-	case GB_SVC_TYPE_INTF_UNIPRO_DISABLE_REQUEST:
+	case GB_SVC_TYPE_INTF_UNIPRO_ENABLE:
+	case GB_SVC_TYPE_INTF_UNIPRO_DISABLE:
 		svc_interface_unipro_enable_disable_handler(msg);
 		break;
-	case GB_SVC_TYPE_INTF_ACTIVATE_REQUEST:
+	case GB_SVC_TYPE_INTF_ACTIVATE:
 		svc_interface_activate_handler(msg);
 		break;
-	case GB_SVC_TYPE_INTF_RESUME_REQUEST:
+	case GB_SVC_TYPE_INTF_RESUME:
 		svc_interface_resume_handler(msg);
 		break;
-	case GB_SVC_TYPE_PROTOCOL_VERSION_RESPONSE:
+	case GB_RESPONSE(GB_SVC_TYPE_PROTOCOL_VERSION):
 		svc_version_response_handler(msg);
 		break;
-	case GB_SVC_TYPE_HELLO_RESPONSE:
+	case GB_RESPONSE(GB_SVC_TYPE_SVC_HELLO):
 		svc_hello_response_handler(msg);
 		break;
-	case GB_SVC_TYPE_MODULE_INSERTED_RESPONSE:
+	case GB_RESPONSE(GB_SVC_TYPE_MODULE_INSERTED):
 		svc_module_inserted_response_handler(msg);
 		break;
-	case GB_SVC_TYPE_MODULE_REMOVED_RESPONSE:
+	case GB_RESPONSE(GB_SVC_TYPE_MODULE_REMOVED):
 		svc_module_removed_response_handler(msg);
 		break;
 	default:
@@ -444,7 +342,7 @@ int svc_send_module_inserted(uint8_t primary_intf_id)
 	struct gb_svc_module_inserted_request req = {
 		.primary_intf_id = primary_intf_id, .intf_count = 1, .flags = 0};
 	return control_send_request(&req, sizeof(struct gb_svc_module_inserted_request),
-				    GB_SVC_TYPE_MODULE_INSERTED_REQUEST);
+				    GB_SVC_TYPE_MODULE_INSERTED);
 }
 
 int svc_send_module_removed(struct gb_interface *intf)
@@ -452,7 +350,7 @@ int svc_send_module_removed(struct gb_interface *intf)
 	int ret;
 	struct gb_svc_module_removed_request req = {.primary_intf_id = sys_cpu_to_le16(intf->id)};
 
-	ret = control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED_REQUEST);
+	ret = control_send_request(&req, sizeof(req), GB_SVC_TYPE_MODULE_REMOVED);
 	if (ret < 0) {
 		return ret;
 	}
@@ -467,7 +365,7 @@ int svc_send_version(void)
 	struct gb_svc_version_request req = {.major = GB_SVC_VERSION_MAJOR,
 					     .minor = GB_SVC_VERSION_MINOR};
 	return control_send_request(&req, sizeof(struct gb_svc_version_request),
-				    GB_SVC_TYPE_PROTOCOL_VERSION_REQUEST);
+				    GB_SVC_TYPE_PROTOCOL_VERSION);
 }
 
 void svc_init(void)

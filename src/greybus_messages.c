@@ -37,9 +37,9 @@ struct gb_message *gb_message_alloc(size_t payload_len, uint8_t message_type, ui
 	}
 
 	msg->header.size = sizeof(struct gb_operation_msg_hdr) + payload_len;
-	msg->header.id = operation_id;
+	msg->header.operation_id = operation_id;
 	msg->header.type = message_type;
-	msg->header.status = status;
+	msg->header.result = status;
 
 	return msg;
 }

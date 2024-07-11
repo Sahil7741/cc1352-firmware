@@ -7,7 +7,7 @@
  */
 
 #include "hdlc.h"
-#include "greybus_protocol.h"
+#include "greybus_protocols.h"
 #include <string.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>

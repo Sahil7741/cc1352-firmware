@@ -4,7 +4,7 @@
  */
 
 #include "node.h"
-#include "greybus_protocol.h"
+#include "greybus_protocols.h"
 #include "greybus_messages.h"
 #include "svc.h"
 #include <zephyr/net/net_ip.h>
@@ -187,7 +187,8 @@ static struct gb_message_in_transport gb_message_receive(int sock, bool *flag)
 		goto early_exit;
 	}
 
-	msg.msg = gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.id, hdr.status);
+	msg.msg =
+		gb_message_alloc(gb_hdr_payload_len(&hdr), hdr.type, hdr.operation_id, hdr.result);
 	if (!msg.msg) {
 		LOG_ERR("Failed to allocate node message");
 		goto early_exit;
