@@ -8,7 +8,7 @@
 
 #include <zephyr/types.h>
 #include <zephyr/sys/byteorder.h>
-#include "greybus_protocol.h"
+#include "greybus_protocols.h"
 #include <string.h>
 
 /*
@@ -56,7 +56,7 @@ static inline size_t gb_message_payload_len(const struct gb_message *msg)
  */
 static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr)
 {
-	return hdr->type & GB_TYPE_RESPONSE_FLAG;
+	return hdr->type & GB_OP_RESPONSE;
 }
 
 /*
@@ -68,7 +68,7 @@ static inline bool gb_hdr_is_response(const struct gb_operation_msg_hdr *hdr)
  */
 static inline bool gb_hdr_is_success(const struct gb_operation_msg_hdr *hdr)
 {
-	return hdr->status == 0x00;
+	return hdr->result == 0x00;
 }
 
 /*
@@ -144,7 +144,7 @@ static inline struct gb_message *gb_message_response_alloc(const void *payload, 
 							   uint16_t operation_id, uint8_t status)
 {
 	struct gb_message *msg =
-		gb_message_alloc(payload_len, OP_RESPONSE | request_type, operation_id, status);
+		gb_message_alloc(payload_len, GB_OP_RESPONSE | request_type, operation_id, status);
 	memcpy(msg->payload, payload, payload_len);
 	return msg;
 }

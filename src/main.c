@@ -5,7 +5,7 @@
 
 #include "ap.h"
 #include "apbridge.h"
-#include "greybus_protocol.h"
+#include "greybus_protocols.h"
 #include "hdlc.h"
 #include "node.h"
 #include "svc.h"
@@ -94,8 +94,8 @@ static int hdlc_process_greybus_frame(const char *buffer, size_t buffer_len)
 		return -1;
 	}
 
-	msg = gb_message_alloc(gb_hdr_payload_len(hdr), gb_frame->hdr.type, gb_frame->hdr.id,
-			       gb_frame->hdr.status);
+	msg = gb_message_alloc(gb_hdr_payload_len(hdr), gb_frame->hdr.type,
+			       gb_frame->hdr.operation_id, gb_frame->hdr.result);
 	if (!msg) {
 		LOG_ERR("Failed to allocate greybus message");
 		return -1;
@@ -166,7 +166,7 @@ static int hdlc_process_complete_frame(const void *buffer, size_t len, uint8_t a
 	return -1;
 }
 
-void main(void)
+int main(void)
 {
 	int ret;
 
@@ -175,7 +175,7 @@ void main(void)
 
 	if (!device_is_ready(uart_dev)) {
 		LOG_ERR("UART device not found!");
-		return;
+		return -ENODEV;
 	}
 
 	hdlc_init(hdlc_process_complete_frame, hdlc_send_callback);
@@ -189,10 +189,12 @@ void main(void)
 		} else {
 			LOG_ERR("Error setting UART callback: %d\n", ret);
 		}
-		return;
+		return ret;
 	}
 
 	uart_irq_rx_enable(uart_dev);
 
 	k_sleep(K_FOREVER);
+
+	return 0;
 }
