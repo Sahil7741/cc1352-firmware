@@ -1,5 +1,4 @@
-image: zephyrprojectrtos/zephyr-build:v0.26.13
-
+image: zephyrprojectrtos/zephyr-build:latest
 build:
   stage: build
   before_script:
@@ -10,7 +9,7 @@ build:
     - pip3 install -r ../zephyr/scripts/requirements-base.txt
   script:
     - source ../zephyr/zephyr-env.sh
-    - west build -b beagleplay_cc1352 . -p
+    - west build -b beagleplay/cc1352p7 . -p
   artifacts:
     paths:
       - build/zephyr/zephyr.bin

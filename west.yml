@@ -12,8 +12,5 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: pull/64718/head
-      import:
-        name-allowlist:
-          - hal_ti
-          - cmsis
+      revision: main
+      import: true
