@@ -1,0 +1,31 @@
+name: Build CC1352 Firmware
+
+on:
+  [push, pull_request, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        path: cc1352-firmware
+
+    - name: Setup Zephyr project
+      uses: zephyrproject-rtos/action-zephyr-setup@v1
+      with:
+        app-path: cc1352-firmware
+        toolchains: arm-zephyr-eabi
+
+    - name: Build
+      run: |
+        west build -b beagleplay/cc1352p7 cc1352-firmware
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cc1352-firmware
+        path: |
+          build/zephyr/zephyr.bin
