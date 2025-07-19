@@ -29,3 +29,4 @@ jobs:
         name: cc1352-firmware
         path: |
           build/zephyr/zephyr.bin
+        compression-level: 0
