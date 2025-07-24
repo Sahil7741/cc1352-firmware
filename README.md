@@ -1,5 +1,10 @@
 # CC1352 Firmware
 
+## Build Status
+
+[![Build CC1352 Firmware](https://github.com/Sahil7741/cc1352-firmware/actions/workflows/build.yml/badge.svg)](https://github.com/Sahil7741/cc1352-firmware/actions/workflows/build.yml)
+
+
 ## Overview
 
 This Zephyr application is being developed as a part of Google Summer of Code 2023. It removes the need to use GBridge (which is an userspace application) in the Beagleplay Greybus setup. 
